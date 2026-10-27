@@ -124,6 +124,16 @@ class WrangleContext:
             if g is None:
                 return V('int', np.zeros(n, dtype=np.int64))
             return V('int', g[elems].astype(np.int64))
+        if name.startswith('opinput') and '_' in name:
+            # @opinput1_P: same element of another input.
+            idx_s, _, aname = name[7:].partition('_')
+            other = self.input(int(idx_s)) if idx_s.isdigit() else None
+            if other is None:
+                return zeros(t, n)
+            arr = other.attribs[cls].get(aname)
+            if arr is None or len(arr) == 0:
+                return zeros(t, n)
+            return V(type_of_array(arr), arr[np.clip(elems, 0, len(arr) - 1)])
         arr = geo.attribs[cls].get(name)
         if arr is not None:
             return V(type_of_array(arr) if not is_array(t) else t, arr[elems])
@@ -200,6 +210,8 @@ class WrangleContext:
         # 1. Write @ bindings.
         for name in interp.written:
             v = interp.attrs[name]
+            if name.startswith('opinput'):
+                continue
             if name in ('ptnum', 'primnum', 'vtxnum', 'elemnum', 'numpt', 'numprim', 'numvtx', 'numelem',
                         'Time', 'Frame', 'TimeInc'):
                 continue

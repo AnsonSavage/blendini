@@ -1405,3 +1405,76 @@ def _expandpointgroup(I, args, mask, hint):
     for i in range(I.n):
         out[i] = idx
     return V('int[]', out)
+
+
+@builtin('vertexpoint')
+def _vertexpoint(I, args, mask, hint):
+    geo = _geo(I, args[0])
+    v = full(convert(args[1], 'int'), _n(I, args[1]))
+    ok = (v >= 0) & (v < geo.num_vertices)
+    return V('int', np.where(ok, geo.vtx_point[np.clip(v, 0, max(geo.num_vertices - 1, 0))] if geo.num_vertices else -1, -1))
+
+
+@builtin('vertexprim')
+def _vertexprim(I, args, mask, hint):
+    geo = _geo(I, args[0])
+    v = full(convert(args[1], 'int'), _n(I, args[1]))
+    vp = geo.vertex_prim()
+    ok = (v >= 0) & (v < geo.num_vertices)
+    return V('int', np.where(ok, vp[np.clip(v, 0, max(geo.num_vertices - 1, 0))] if geo.num_vertices else -1, -1))
+
+
+@builtin('idtopoint')
+def _idtopoint(I, args, mask, hint):
+    geo = _geo(I, args[0])
+    ids = full(convert(args[1], 'int'), _n(I, args[1]))
+    arr = geo.attribs['point'].get('id')
+    if arr is None:
+        return V('int', np.where((ids >= 0) & (ids < geo.num_points), ids, -1))
+    lookup = {int(x): i for i, x in enumerate(arr.tolist())}
+    return V('int', np.array([lookup.get(int(x), -1) for x in ids], dtype=np.int64))
+
+
+@builtin('findattribval')
+def _findattribval(I, args, mask, hint):
+    geo = _geo(I, args[0])
+    cls = _uniform_str(args[1])
+    name = _uniform_str(args[2])
+    arr = geo.attribs.get(cls, {}).get(name)
+    vals = full(args[3], _n(I, args[3]))
+    if arr is None:
+        return const('int', -1)
+    out = np.full(len(vals), -1, dtype=np.int64)
+    for i, v in enumerate(vals):
+        hits = np.nonzero(arr == v)[0] if arr.ndim == 1 else np.nonzero(np.all(arr == v, axis=1))[0]
+        if len(hits):
+            out[i] = hits[0]
+    return V('int', out)
+
+
+@builtin('sample_direction_uniform', 'sample_sphere_uniform')
+def _sample_dir(I, args, mask, hint):
+    u = _f(convert(args[0], 'vector'))
+    z = 1 - 2 * u[:, 0]
+    r = np.sqrt(np.maximum(0, 1 - z * z))
+    phi = 2 * np.pi * u[:, 1]
+    d = np.stack([r * np.cos(phi), r * np.sin(phi), z], axis=1)
+    if u.shape[1] == 3 and len(args) and args[0].t == 'vector':
+        d = d * np.cbrt(u[:, 2:3])
+    return V('vector', d)
+
+
+@builtin('chramp')
+def _chramp2(I, args, mask, hint):
+    name = _uniform_str(args[0])
+    x = _f(convert(args[1], 'float'))
+    return V('float', I.ctx.ramp(name, x))
+
+
+@builtin('primarea')
+def _primarea(I, args, mask, hint):
+    geo = _geo(I, args[0])
+    p = full(convert(args[1], 'int'), _n(I, args[1]))
+    areas = geo.prim_areas()
+    ok = (p >= 0) & (p < len(areas))
+    return V('float', np.where(ok, areas[np.clip(p, 0, max(len(areas) - 1, 0))] if len(areas) else 0.0, 0.0))

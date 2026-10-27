@@ -68,7 +68,8 @@ def request_cook(tree):
     if tree is None or not getattr(tree, 'auto_cook', True):
         return
     if bpy.app.background:
-        cook_tree(tree)
+        # No timers in background mode, and cooking inside update callbacks is unsafe:
+        # scripts call cook_tree() explicitly.
         return
     global _timer_registered
     _pending.add(tree.name_full if hasattr(tree, 'name_full') else tree.name)
@@ -244,6 +245,8 @@ def ensure_target(tree):
         scene.collection.objects.link(obj)
     obj["blendini_tree"] = tree.name
     tree.target = obj
+    from .display import setup_target
+    setup_target(obj)
     return obj
 
 

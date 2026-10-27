@@ -116,6 +116,14 @@ def geo_to_mesh(geo, mesh):
             pass
 
     # Normals
+    has_n = 'N' in geo.attribs[VERTEX] or 'N' in geo.attribs[POINT]
+    if not has_n and len(face_prims):
+        # Like Houdini's viewport: smooth below a 60 degree cusp angle.
+        try:
+            import math
+            mesh.set_sharp_from_angle(angle=math.radians(60.0))
+        except (AttributeError, TypeError):
+            pass
     if 'N' in geo.attribs[VERTEX] and len(loop_src):
         N = geo.attribs[VERTEX]['N'][loop_src]
         _set_custom_normals(mesh, N, per_vertex=False)

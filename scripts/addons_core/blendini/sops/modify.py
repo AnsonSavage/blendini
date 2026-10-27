@@ -552,8 +552,14 @@ class PolyExtrudeSOP(SOP):
         nxt[last[nz]] = geo.prim_start[:-1][nz]
         a = geo.vtx_point[vsel]
         b = geo.vtx_point[nxt][vsel]
+        src_prim = vp[vsel]
         fwd = set(zip(a.tolist(), b.tolist()))
-        side = [(x, y) for x, y in zip(a.tolist(), b.tolist()) if (y, x) not in fwd]
+        side = []
+        side_src = []
+        for x, y, sp in zip(a.tolist(), b.tolist(), src_prim.tolist()):
+            if (y, x) not in fwd:
+                side.append((x, y))
+                side_src.append(sp)
         back_prims = None
         if p.outputback:
             back_prims = [geo.prim_points(i)[::-1].tolist() for i in np.nonzero(sel)[0]]
@@ -562,11 +568,16 @@ class PolyExtrudeSOP(SOP):
         front_group = np.zeros(geo.num_prims, dtype=bool)
         front_group[sel] = True
         n_before = geo.num_prims
+        sel_idx = np.nonzero(sel)[0]
         if p.outputside and side:
             quads = [[x, y, remap[y], remap[x]] for x, y in side]
-            geo.add_prims(quads)
+            new = geo.add_prims(quads)
+            for name, arr in geo.attribs[PRIM].items():
+                arr[new] = arr[np.asarray(side_src)]
         if back_prims:
-            geo.add_prims(back_prims)
+            new = geo.add_prims(back_prims)
+            for name, arr in geo.attribs[PRIM].items():
+                arr[new] = arr[sel_idx]
         if not p.outputfront:
             geo.delete_prims(np.concatenate([front_group, np.zeros(geo.num_prims - n_before, dtype=bool)]),
                              keep_points=True)
@@ -1048,3 +1059,55 @@ def _relax_points(P, N, area, n):
             disp[i] += (P[i] - P[j]) / d * (r - d) * 0.5
     disp -= N * np.sum(disp * N, axis=1, keepdims=True)
     return P + disp
+
+
+@register_sop
+class PolyWireSOP(SOP):
+    id = 'polywire'
+    label = "PolyWire"
+    category = 'Polygon'
+    inputs = 1
+    icon = 'MOD_WIREFRAME'
+    parms = (
+        Parm('radius', "Wire Radius", 'float', default=0.02, min=0, soft_max=1),
+        Parm('divs', "Divisions", 'int', default=6, min=3, max=64),
+        Parm('usepscale', "Scale Radius by pscale", 'bool', default=True),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs)
+        E = geo.edges()
+        out = Geometry()
+        if len(E) == 0:
+            return out
+        k = max(p.divs, 3)
+        A = geo.P[E[:, 0]]
+        B = geo.P[E[:, 1]]
+        d = B - A
+        ln = np.linalg.norm(d, axis=1, keepdims=True)
+        d = d / np.where(ln == 0, 1, ln)
+        ref = np.where(np.abs(d[:, 1:2]) < 0.9, [[0.0, 1.0, 0.0]], [[1.0, 0.0, 0.0]])
+        u = np.cross(d, ref)
+        u /= np.maximum(np.linalg.norm(u, axis=1, keepdims=True), 1e-12)
+        v = np.cross(d, u)
+        ang = 2 * np.pi * np.arange(k) / k
+        ring = np.cos(ang)[None, :, None] * u[:, None, :] + np.sin(ang)[None, :, None] * v[:, None, :]
+        rad = np.full((len(E), 2), p.radius)
+        pscale = geo.attribs[POINT].get('pscale')
+        if p.usepscale and pscale is not None:
+            rad = rad * pscale[E]
+        PA = A[:, None, :] + ring * rad[:, 0, None, None]
+        PB = B[:, None, :] + ring * rad[:, 1, None, None]
+        out.P = np.concatenate([PA, PB], axis=1).reshape(-1, 3)
+        base = (np.arange(len(E)) * 2 * k)[:, None]
+        i = np.arange(k)[None, :]
+        j = (i + 1) % k
+        quads = np.stack([base + i, base + j, base + k + j, base + k + i], axis=2).reshape(-1, 4)
+        out.add_prims_flat(np.full(len(quads), 4), quads.ravel())
+        # Carry point attributes from the wire's end points.
+        for name, arr in geo.attribs[POINT].items():
+            if name in ('P', 'N') or arr.dtype == object:
+                continue
+            src = np.concatenate([np.repeat(E[:, :1], k, axis=1), np.repeat(E[:, 1:], k, axis=1)], axis=1).ravel()
+            out.attribs[POINT][name] = arr[src]
+        return out

@@ -348,6 +348,9 @@ class BLENDINI_OT_new_network(bpy.types.Operator):
         context.collection.objects.link(obj)
         obj["blendini_tree"] = tree.name
         tree.target = obj
+        from .display import setup_target
+        setup_target(obj)
+        _show_attribute_colors(context)
         for o in context.view_layer.objects:
             o.select_set(False)
         obj.select_set(True)
@@ -357,6 +360,18 @@ class BLENDINI_OT_new_network(bpy.types.Operator):
         show_tree_in_editor(context, tree)
         cook.cook_tree(tree)
         return {'FINISHED'}
+
+
+def _show_attribute_colors(context):
+    """Houdini displays Cd by default: switch solid shading to attribute colors."""
+    screen = context.screen
+    if screen is None:
+        return
+    for area in screen.areas:
+        if area.type == 'VIEW_3D':
+            shading = area.spaces.active.shading
+            if shading.type == 'SOLID':
+                shading.color_type = 'VERTEX'
 
 
 def build_starter(tree):
@@ -560,12 +575,13 @@ class BLENDINI_PT_network(bpy.types.Panel):
         layout.prop(tree, "show_parms_in_nodes")
         layout.operator("blendini.cook", icon='FILE_REFRESH')
         layout.operator("blendini.houdini_theme", icon='COLOR')
+        layout.operator("blendini.load_examples", icon='PRESET')
         box = layout.box()
         box.label(text="Hotkeys", icon='EVENT_TAB')
         col = box.column(align=True)
         col.scale_y = 0.8
         col.label(text="Tab: add node (type to search)")
-        col.label(text="R: display flag   B: bypass")
+        col.label(text="R: display flag   M: bypass")
         col.label(text="Ctrl+Enter in text editor: recook")
 
 
@@ -634,6 +650,7 @@ class BLENDINI_OT_tab_menu(bpy.types.Operator):
 def draw_view3d_add(self, context):
     self.layout.separator()
     self.layout.operator(BLENDINI_OT_new_network.bl_idname, icon='MESH_ICOSPHERE')
+    self.layout.operator("blendini.load_examples", text="Blendini Examples", icon='PRESET')
 
 
 # ----------------------------------------------------------------------------
@@ -723,8 +740,13 @@ classes = (
 ) + tuple(CATEGORY_MENUS)
 
 
+def _all_classes():
+    from .examples import BLENDINI_OT_load_examples
+    return classes + (BLENDINI_OT_load_examples,)
+
+
 def register():
-    for cls in classes:
+    for cls in _all_classes():
         bpy.utils.register_class(cls)
     bpy.types.VIEW3D_MT_add.append(draw_view3d_add)
     bpy.app.handlers.frame_change_post.append(on_frame_change)
@@ -737,7 +759,6 @@ def register():
         km = kc.keymaps.new(name="Node Editor", space_type='NODE_EDITOR')
         addon_keymaps.append((km, km.keymap_items.new(BLENDINI_OT_tab_menu.bl_idname, 'TAB', 'PRESS')))
         addon_keymaps.append((km, km.keymap_items.new(BLENDINI_OT_set_display.bl_idname, 'R', 'PRESS')))
-        addon_keymaps.append((km, km.keymap_items.new(BLENDINI_OT_toggle_bypass.bl_idname, 'B', 'PRESS')))
 
 
 def unregister():
@@ -755,5 +776,5 @@ def unregister():
         if fn in lst:
             lst.remove(fn)
     bpy.types.VIEW3D_MT_add.remove(draw_view3d_add)
-    for cls in reversed(classes):
+    for cls in reversed(_all_classes()):
         bpy.utils.unregister_class(cls)

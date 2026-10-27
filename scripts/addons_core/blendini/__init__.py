@@ -15,17 +15,21 @@ bl_info = {
     "category": "Node",
 }
 
-if "bpy" in locals():
+if "_loaded" in locals():
     import importlib
     from . import core, vex, sops, bl  # noqa: F401
     for mod in list(__import__('sys').modules.values()):
         if getattr(mod, '__name__', '').startswith(__name__ + '.'):
             importlib.reload(mod)
 
-import bpy  # noqa: E402
+_loaded = True
+
+# Note: bpy is imported lazily so the core (geometry, VEX, SOPs) can be used and tested
+# outside of Blender.
 
 
 def register():
+    import bpy
     from .bl import tree, ui
     for cls in tree.classes:
         bpy.utils.register_class(cls)
@@ -37,6 +41,7 @@ def register():
 
 
 def unregister():
+    import bpy
     from .bl import tree, ui
     ui.unregister()
     import nodeitems_utils

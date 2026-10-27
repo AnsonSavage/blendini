@@ -280,7 +280,9 @@ class ObjectMergeSOP(SOP):
             if p.objpath:
                 raise CookError("Object '%s' not found" % p.objpath)
             return Geometry()
-        matrix = np.array(obj.matrix_world) if p.xformtype == 'world' else None
+        # Blender is Z-up, Blendini (like Houdini) is Y-up.
+        z_to_y = np.array([[1, 0, 0, 0], [0, 0, 1, 0], [0, -1, 0, 0], [0, 0, 0, 1]], dtype=np.float64)
+        matrix = z_to_y @ np.array(obj.matrix_world) if p.xformtype == 'world' else z_to_y
         if p.evaluated:
             depsgraph = bpy.context.evaluated_depsgraph_get()
             obj_eval = obj.evaluated_get(depsgraph)
