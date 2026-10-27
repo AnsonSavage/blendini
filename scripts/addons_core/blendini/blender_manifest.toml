@@ -16,4 +16,4 @@ license = ["SPDX:GPL-3.0-or-later"]
 files = "Read .obj files with the File SOP and save geometry to disk"
 
 [build]
-paths_exclude_pattern = ["__pycache__/", "/tests/", "*.pyc"]
+paths_exclude_pattern = ["__pycache__/", "/tests/", "/docs/", "*.pyc"]

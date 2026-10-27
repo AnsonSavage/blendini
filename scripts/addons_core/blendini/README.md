@@ -2,6 +2,13 @@
 
 **Houdini-style procedural SOP networks for Blender, with a VEX wrangle.**
 
+![Blendini example networks](docs/showcase.jpg)
+
+*The bundled example networks, rendered with Cycles: VEX ripple, PolyExtrude city, eroded
+heightfield, L-system, For-Each, Voronoi fracture, RBD (Bullet), Vellum-style cloth, PBF fluid
+meshed with OpenVDB, packed instances, a nearpoints "plexus" and a curve built in a Detail
+Wrangle.*
+
 Blendini is an open-source take on Houdini's geometry context. It uses Blender as the
 host and backend. You build a network of SOP nodes in a node editor. The node with the
 **display flag** cooks into a Blender object. The **Point Wrangle** runs real (subset)

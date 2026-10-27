@@ -1,0 +1,3 @@
+# Store documentation images as regular blobs (not Git LFS).
+*.jpg -filter -diff -merge binary
+*.png -filter -diff -merge binary
