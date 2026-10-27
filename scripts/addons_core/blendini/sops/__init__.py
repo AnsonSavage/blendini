@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 from .base import REGISTRY, CATEGORIES, CATEGORY_COLORS, CookContext, CookError, Parm, SOP
-from . import generators, modify, attribs, vellum  # noqa: F401  (registers SOPs)
+from . import generators, modify, attribs, vellum, heightfield  # noqa: F401  (registers SOPs)
 
 try:
     import bpy  # noqa: F401

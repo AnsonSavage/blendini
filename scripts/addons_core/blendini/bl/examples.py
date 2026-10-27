@@ -101,6 +101,20 @@ INSIDE = """\
 """
 
 
+TERRAIN = """\
+// Colour the terrain by height, slope and water flow
+float h = @P.y / ch("maxh");
+float slope = 1 - abs(@N.y);
+vector grass = {0.25, 0.42, 0.16};
+vector rock = {0.42, 0.38, 0.34};
+vector snow = {0.95, 0.95, 0.97};
+vector c = lerp(grass, rock, smooth(0.15, 0.35, slope));
+c = lerp(c, snow, smooth(0.75, 0.9, h) * (1 - smooth(0.4, 0.6, slope)));
+c = lerp(c, {0.12, 0.2, 0.3}, smooth(5, 8, f@flow) * 0.8);
+@Cd = c;
+"""
+
+
 def _node(tree, sop_id, loc, **parms):
     node = tree.nodes.new(NODE_PREFIX + sop_id)
     node.location = loc
@@ -261,6 +275,17 @@ def build_examples():
     rbd = _node(t, 'rbdsolver', (0, -200))
     _chain(t, [box, fr, col, lift, rbd])
     _finish(t, rbd)
+    trees.append(t)
+
+    t = _new_tree("terrain", (115, 0, 0))
+    hf = _node(t, 'heightfield', (0, 600), size=(12.0, 12.0), gridspacing=0.06)
+    nz = _node(t, 'hfnoise', (0, 400), amp=2.2, elementsize=6.0, octaves=7, roughness=0.55)
+    er = _node(t, 'hferode', (0, 200), iterations=40, hydro=0.006)
+    nm = _node(t, 'normal', (0, 0))
+    col = _node(t, 'pointwrangle', (0, -200), snippet=TERRAIN)
+    _spare(col, maxh=2.6)
+    _chain(t, [hf, nz, er, nm, col])
+    _finish(t, col)
     trees.append(t)
 
     t = _new_tree("spiral", (50, 0, 0))

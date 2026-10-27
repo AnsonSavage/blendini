@@ -33,9 +33,9 @@ Or step by step:
 1. Enable **Blendini** in *Preferences → Add-ons*.
 2. In the 3D viewport choose *Add → Blendini Geometry*. This creates `geo1` (an object
    plus its SOP network, like `/obj/geo1`) and opens the network in a node editor.
-3. Or use *Add → Blendini Examples* to build eleven example networks: ripple, scatter and
+3. Or use *Add → Blendini Examples* to build twelve example networks: ripple, scatter and
    copy, plexus, city, particles, for-each, L-system tree, Vellum cloth, fracture, RBD
-   fracture and spiral. Press
+   fracture, eroded terrain and spiral. Press
    play for the simulations.
 4. In the node editor:
    - **Tab**: Houdini-style TAB menu (start typing to search). With a node selected, the new
@@ -72,6 +72,7 @@ Blender is Z-up and Houdini is Y-up. Output objects are rotated 90° around X so
 | Manipulate| **RBD Bullet Solver\*** (Blender's rigid bodies in a private scene), **Vellum Cloth (PBD)** (stretch/bend constraints, pins, ground, colliders), Transform, **Edit** (move points in Blender's Edit Mode, stored as offsets), Mountain, Point Jitter, Peak, Smooth, Ray\* |
 | Polygon   | **Voronoi Fracture\***, Add, Clean, Ends, Fuse, Facet, Divide, Reverse, PolyExtrude, PolyWire, Sweep, Resample, Subdivide\*, PolyBevel\*, Boolean\*, Remesh\*, PolyReduce\*, Clip\* |
 | Attribute | Attribute Create / Delete / Rename / Promote / Randomize / Noise / Transfer, Attribute from Map\*, Color, Normal, Connectivity, Measure, UV Texture, PolyFrame, Trail (velocity, also feeds Blender motion blur) |
+| Terrain   | HeightField, HeightField Noise (fBm / ridged), HeightField Erode (thermal + flow-based hydraulic) |
 | Group     | Group Create (pattern / bounding box / normal / random / `@expression`), Blast |
 | Copy      | Copy to Points (orient, N/up, pscale, scale, **Pack and Instance**), Unpack, Copy and Transform, Scatter, Points from Volume\* |
 | VEX       | Attribute Wrangle (run over points / prims / vertices / detail / numbers), **Point Wrangle**, Primitive Wrangle, Detail Wrangle, **Solver (VEX)** |
