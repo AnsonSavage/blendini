@@ -2307,3 +2307,53 @@ def chain_segments(edges):
             chains.append(np.array(c, dtype=np.int64))
             closed.append(cl)
     return chains, closed
+
+
+@register_sop
+class PointDeformSOP(SOP):
+    id = 'pointdeform'
+    label = "Point Deform"
+    category = 'Manipulate'
+    inputs = 3
+    input_labels = ("Geometry to Deform", "Rest Point Lattice", "Deformed Point Lattice")
+    icon = 'MOD_MESHDEFORM'
+    parms = (
+        Parm('maxpts', "Max Points", 'int', default=8, min=1, max=64),
+        Parm('radius', "Radius (0 = unlimited)", 'float', default=0.0, min=0),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs, 0).copy()
+        rest = _in(inputs, 1)
+        dfm = _in(inputs, 2)
+        if geo.num_points == 0 or rest.num_points == 0:
+            return geo
+        if dfm.num_points != rest.num_points:
+            raise CookError("Rest and deformed lattices need the same point count")
+        k = min(max(int(p.maxpts), 1), rest.num_points)
+        P = geo.P
+        try:
+            from mathutils.kdtree import KDTree
+            tree = KDTree(rest.num_points)
+            for i, co in enumerate(rest.P.tolist()):
+                tree.insert(co, i)
+            tree.balance()
+            idx = np.zeros((len(P), k), dtype=np.int64)
+            dist = np.full((len(P), k), np.inf)
+            for i, co in enumerate(P.tolist()):
+                found = tree.find_n(co, k)
+                for j, (_c, index, d) in enumerate(found):
+                    idx[i, j] = index
+                    dist[i, j] = d
+        except ImportError:
+            d2 = np.sum((P[:, None, :] - rest.P[None, :, :]) ** 2, axis=2)
+            idx = np.argsort(d2, axis=1)[:, :k]
+            dist = np.sqrt(np.take_along_axis(d2, idx, axis=1))
+        w = 1.0 / np.maximum(dist, 1e-9) ** 2
+        if p.radius > 0:
+            w = np.where(dist <= p.radius, w, 0.0)
+        wsum = w.sum(axis=1, keepdims=True)
+        offset = dfm.P - rest.P
+        move = np.einsum('nk,nkj->nj', w / np.where(wsum == 0, 1, wsum), offset[idx])
+        geo.P = P + move
+        return geo
