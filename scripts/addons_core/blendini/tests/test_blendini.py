@@ -214,7 +214,8 @@ class TestSops(unittest.TestCase):
         b = cook_sop('box')
         m = merge([a, b])
         self.assertEqual(m.num_points, 16)
-        np.testing.assert_allclose(m.attribs['point']['Cd'][8:], 0)
+        # Like Houdini, geometry without Cd gets the attribute's default (white).
+        np.testing.assert_allclose(m.attribs['point']['Cd'][8:], 1)
 
     def test_copy_to_points(self):
         pts = cook_sop('pointwrangle', [_grid(3)], snippet='f@pscale = 2;')

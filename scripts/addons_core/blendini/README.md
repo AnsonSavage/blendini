@@ -68,6 +68,10 @@ Or step by step:
    spare parameters for every `ch("name")` call, like Houdini's "create spare parameters"
    button.
 
+Output objects get a *Blendini Cd* material, so renders show `Cd` (or per-instance `Cd`)
+like Houdini does, with grey as the fallback. Missing attributes are filled with Houdini's
+defaults, e.g. white for `Cd` and 1 for `pscale`.
+
 Blender is Z-up and Houdini is Y-up. Output objects are rotated 90° around X so
 `@P.y` stays "up" in your VEX. Object Merge converts the other way.
 

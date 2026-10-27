@@ -73,6 +73,7 @@ def setup_target(obj):
     import math
     obj.rotation_euler = (math.pi / 2, 0.0, 0.0)
     ensure_point_display(obj)
+    ensure_material(obj)
 
 
 # ----------------------------------------------------------------------------
@@ -202,3 +203,55 @@ def _set_modifier_input(mod, ident, value):
             mod[ident] = value
     except TypeError:
         pass
+
+
+MATERIAL_NAME = "Blendini Cd"
+
+
+def cd_material():
+    """A material that renders the Cd attribute (mesh or instance), grey when there is none."""
+    mat = bpy.data.materials.get(MATERIAL_NAME)
+    if mat is not None:
+        return mat
+    mat = bpy.data.materials.new(MATERIAL_NAME)
+    try:
+        mat.use_nodes = True
+    except AttributeError:
+        pass
+    nt = mat.node_tree
+    bsdf = next((n for n in nt.nodes if n.type == 'BSDF_PRINCIPLED'), None)
+    if bsdf is None:
+        return mat
+    geo_cd = nt.nodes.new('ShaderNodeAttribute')
+    geo_cd.attribute_name = 'Cd'
+    geo_cd.attribute_type = 'GEOMETRY'
+    geo_cd.location = (-700, 200)
+    inst_cd = nt.nodes.new('ShaderNodeAttribute')
+    inst_cd.attribute_name = 'Cd'
+    inst_cd.attribute_type = 'INSTANCER'
+    inst_cd.location = (-700, -100)
+    mix1 = nt.nodes.new('ShaderNodeMix')
+    mix1.data_type = 'RGBA'
+    mix1.location = (-450, 200)
+    mix1.inputs['A'].default_value = (0.8, 0.8, 0.8, 1.0)
+    mix2 = nt.nodes.new('ShaderNodeMix')
+    mix2.data_type = 'RGBA'
+    mix2.location = (-250, 100)
+    links = nt.links
+    # Attribute 'Alpha' is 1 where the attribute exists, 0 otherwise.
+    links.new(geo_cd.outputs['Alpha'], mix1.inputs['Factor'])
+    links.new(geo_cd.outputs['Color'], mix1.inputs['B'])
+    links.new(mix1.outputs['Result'], mix2.inputs['A'])
+    links.new(inst_cd.outputs['Alpha'], mix2.inputs['Factor'])
+    links.new(inst_cd.outputs['Color'], mix2.inputs['B'])
+    links.new(mix2.outputs['Result'], bsdf.inputs['Base Color'])
+    return mat
+
+
+def ensure_material(obj):
+    mesh = obj.data
+    if mesh is not None and not mesh.materials:
+        try:
+            mesh.materials.append(cd_material())
+        except Exception as ex:
+            print("Blendini: could not create the Cd material:", ex)

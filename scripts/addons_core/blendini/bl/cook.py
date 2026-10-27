@@ -459,7 +459,11 @@ def cook_tree(tree, frame=None):
         tkey = ('__written__', _tree_key(tree))
         if _cache.get(tkey) != (sig, obj.data.name) or sig is None:
             from .mesh_io import geo_to_mesh
+            mats = list(obj.data.materials)
             geo_to_mesh(geo, obj.data)
+            if mats and not obj.data.materials:
+                for m in mats:
+                    obj.data.materials.append(m)
             obj.data.update()
             from .display import sync_instances
             sync_instances(tree, obj, geo)

@@ -31,6 +31,18 @@ INT_ATTRIBS = {'id', 'class', 'ptnum', 'primnum'}
 STRING_ATTRIBS = {'name', 'path', 'instance', 'material'}
 
 
+# Default values used when an attribute has to be filled in (Houdini's attribute defaults).
+ATTRIB_DEFAULTS = {'Cd': 1.0, 'Alpha': 1.0, 'pscale': 1.0, 'scale': 1.0, 'orient': (0.0, 0.0, 0.0, 1.0),
+                   'width': 1.0, '__inst': -1, '__inst_scale': 1.0}
+
+
+def _fill_default(arr, name):
+    d = ATTRIB_DEFAULTS.get(name)
+    if d is not None and arr.dtype != object:
+        arr[...] = d
+    return arr
+
+
 def _default_shape(name):
     if name in VECTOR_ATTRIBS:
         return (3,)
@@ -191,10 +203,8 @@ class Geometry:
         for name, arr in list(self.attribs[POINT].items()):
             if name == 'P':
                 self.attribs[POINT]['P'] = np.concatenate([arr, positions])
-            elif name == '__inst':
-                self.attribs[POINT][name] = np.concatenate([arr, np.full(n_new, -1, dtype=arr.dtype)])
             else:
-                self.attribs[POINT][name] = _grow(arr, n_new)
+                self.attribs[POINT][name] = _grow(arr, n_new, name)
         for name, g in self.groups[POINT].items():
             self.groups[POINT][name] = np.concatenate([g, np.zeros(n_new, dtype=bool)])
         return np.arange(start, start + n_new)
@@ -219,9 +229,9 @@ class Geometry:
         closed_arr = np.broadcast_to(np.asarray(closed, dtype=bool), (n_new,))
         self.prim_closed = np.concatenate([self.prim_closed, closed_arr])
         for name, arr in list(self.attribs[PRIM].items()):
-            self.attribs[PRIM][name] = _grow(arr, n_new)
+            self.attribs[PRIM][name] = _grow(arr, n_new, name)
         for name, arr in list(self.attribs[VERTEX].items()):
-            self.attribs[VERTEX][name] = _grow(arr, nv_new)
+            self.attribs[VERTEX][name] = _grow(arr, nv_new, name)
         for name, g in self.groups[PRIM].items():
             self.groups[PRIM][name] = np.concatenate([g, np.zeros(n_new, dtype=bool)])
         return np.arange(start, start + n_new)
@@ -442,10 +452,12 @@ class Geometry:
         return "<Geometry points=%d prims=%d vertices=%d>" % (self.num_points, self.num_prims, self.num_vertices)
 
 
-def _grow(arr, n_new):
+def _grow(arr, n_new, name=None):
     pad = np.zeros((n_new,) + arr.shape[1:], dtype=arr.dtype)
     if arr.dtype == object:
         pad[...] = ''
+    elif name is not None:
+        _fill_default(pad, name)
     return np.concatenate([arr, pad])
 
 
@@ -474,10 +486,8 @@ def merge(geos):
                     arr = np.zeros((n,) + shape, dtype=dtype)
                     if dtype == object:
                         arr[...] = ''
-                    if name == '__inst':
-                        arr[...] = -1
-                    if name == '__inst_scale':
-                        arr[...] = 1
+                    else:
+                        _fill_default(arr, name)
                 elif name == '__inst':
                     arr = np.where(arr >= 0, arr + inst_offset, -1)
                 if name == '__inst':
