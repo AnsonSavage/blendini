@@ -347,14 +347,12 @@ def _write_attrib(geo, cls, name, t, idx, data):
 
 
 def _rebuild(geo, polys):
-    vtx_attribs = geo.attribs[VERTEX]
-    geo.attribs[VERTEX] = {}
+    geo.attribs[VERTEX] = {}  # vertex attributes don't survive the topology change
     closed = geo.prim_closed.copy()
     sizes = np.array([len(p) for p in polys], dtype=np.int64)
     geo.prim_start = np.concatenate([[0], np.cumsum(sizes)]).astype(np.int64)
     geo.vtx_point = np.array([x for p in polys for x in p], dtype=np.int64)
     geo.prim_closed = closed
-    del vtx_attribs
 
 
 def run_wrangle(code, inputs, run_over=POINT, group=None, channels=None, ramps=None, time=0.0, frame=1.0, fps=24.0,

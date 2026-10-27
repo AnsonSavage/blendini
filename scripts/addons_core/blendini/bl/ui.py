@@ -385,7 +385,6 @@ class BLENDINI_OT_edit_commit(bpy.types.Operator):
         ups = cook._input_nodes(node.inputs[0])
         if not ups:
             return {'CANCELLED'}
-        scene = context.scene
         base = cook.node_geometry(ups[0])
         mesh = obj.data
         if base is None or len(mesh.vertices) != base.num_points:

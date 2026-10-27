@@ -1837,15 +1837,13 @@ class EndsSOP(SOP):
             target = np.nonzero(sel & geo.prim_closed)[0]
             for i in target:
                 polys[i] = polys[i] + polys[i][:1]
-            vtx = geo.attribs[VERTEX]
-            geo.attribs[VERTEX] = {}
+            geo.attribs[VERTEX] = {}  # vertex attributes don't survive the topology change
             closed = geo.prim_closed.copy()
             closed[target] = False
             sizes = np.array([len(x) for x in polys], dtype=np.int64)
             geo.prim_start = np.concatenate([[0], np.cumsum(sizes)]).astype(np.int64)
             geo.vtx_point = np.array([v for x in polys for v in x], dtype=np.int64)
             geo.prim_closed = closed
-            del vtx
         return geo
 
 

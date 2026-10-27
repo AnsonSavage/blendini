@@ -172,7 +172,6 @@ def _bc(x, like):
 @builtin('clamp')
 def _clamp(I, args, mask, hint):
     v, lo, hi = args
-    d = _f(v)
     return V(_float_type(v.t) if v.t != 'int' else 'int', np.clip(v.d, _bc(lo.d, v.d), _bc(hi.d, v.d)))
 
 
@@ -901,7 +900,6 @@ def _ch(I, args, mask, hint):
         v = const('float', float(arr))
     else:
         v = V(VEC_BY_SIZE.get(arr.size, 'vector'), arr.reshape(1, -1))
-    fname = I._current_call if hasattr(I, '_current_call') else None
     return v
 
 
