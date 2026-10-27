@@ -74,8 +74,9 @@ _ident_re = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
 _attr_re = re.compile(r'(?:([fivpus234d])(\[\])?)?@([A-Za-z_][A-Za-z0-9_]*)')
 
 
-def tokenize(src):
+def tokenize(src, macros=None):
     toks = []
+    macros = {} if macros is None else macros
     i = 0
     n = len(src)
     line = 1
@@ -103,8 +104,12 @@ def tokenize(src):
             i = j + 2
             continue
         if c == '#' and src[line_start:i].strip() == '':
-            # Preprocessor directives (#include, #define) are ignored.
+            # Preprocessor: object-like #define macros are expanded, other directives ignored.
             j = src.find('\n', i)
+            directive = src[i:n if j < 0 else j]
+            m = re.match(r'#\s*define\s+([A-Za-z_]\w*)(?!\()\s*(.*)$', directive)
+            if m:
+                macros[m.group(1)] = tokenize(m.group(2), macros)[:-1] if m.group(2).strip() else []
             i = n if j < 0 else j
             continue
         # Attribute bindings: @P, v@foo, i[]@bar, 4@xform
@@ -126,7 +131,12 @@ def tokenize(src):
             continue
         if c.isalpha() or c == '_':
             m = _ident_re.match(src, i)
-            toks.append(Tok('ident', m.group(0), line, col))
+            word = m.group(0)
+            if word in macros:
+                for t in macros[word]:
+                    toks.append(Tok(t.type, t.value, line, col))
+            else:
+                toks.append(Tok('ident', word, line, col))
             i = m.end()
             continue
         if c in '"\'':
@@ -253,6 +263,8 @@ class Parser:
             self.expect('(')
             params = []
             while not self.is_op(')'):
+                while self.tok.type == 'ident' and self.tok.value in ('const', 'export'):
+                    self.next()
                 if not self.is_type():
                     raise VexSyntaxError("Expected parameter type", self.tok.line, self.tok.col)
                 ptype = self.next().value
