@@ -14,8 +14,8 @@ host and backend. You build a network of SOP nodes in a node editor. The node wi
 **display flag** cooks into a Blender object. The **Point Wrangle** runs real (subset)
 VEX code over every point in parallel.
 
-It ships as a core add-on in this Blender fork (`scripts/addons_core/blendini`), together
-with a *Blendini* application template.
+It ships as a core add-on in this Blender fork (`scripts/addons_core/blendini`), enabled in
+the fork's factory settings, together with a *Blendini* application template.
 
 ## Installing into a regular Blender
 
