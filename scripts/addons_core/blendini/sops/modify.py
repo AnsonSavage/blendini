@@ -2217,3 +2217,93 @@ class BendSOP(SOP):
             Q[:, a], Q[:, b] = new_a, new_b
         geo.P = Q + np.asarray(p.origin)
         return geo
+
+
+@register_sop
+class ConvertLineSOP(SOP):
+    id = 'convertline'
+    label = "Convert Line"
+    category = 'Polygon'
+    inputs = 1
+    icon = 'MOD_WIREFRAME'
+    parms = (Parm('restlength', "Compute Rest Length", 'bool', default=True),)
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs)
+        out = Geometry()
+        out.attribs[POINT] = {k: v.copy() for k, v in geo.attribs[POINT].items()}
+        out.groups[POINT] = {k: v.copy() for k, v in geo.groups[POINT].items()}
+        E = geo.edges()
+        if len(E):
+            out.add_prims_flat(np.full(len(E), 2), E.ravel(), False)
+            if p.restlength:
+                out.attribs[PRIM]['restlength'] = np.linalg.norm(geo.P[E[:, 1]] - geo.P[E[:, 0]], axis=1)
+        return out
+
+
+@register_sop
+class PolyPathSOP(SOP):
+    id = 'polypath'
+    label = "PolyPath"
+    category = 'Polygon'
+    inputs = 1
+    icon = 'CURVE_PATH'
+    description = "Join polylines that share end points into the longest possible paths"
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs)
+        out = geo.copy()
+        open_mask = ~geo.prim_closed
+        if not open_mask.any():
+            return out
+        segs = []
+        for i in np.nonzero(open_mask)[0]:
+            pts = geo.prim_points(i)
+            segs.extend(zip(pts[:-1].tolist(), pts[1:].tolist()))
+        out._delete_prims_only(open_mask)
+        chains, closed = chain_segments(np.array(segs, dtype=np.int64).reshape(-1, 2))
+        if chains:
+            out.add_prims_flat([len(c) for c in chains], np.concatenate(chains), np.array(closed, dtype=bool))
+        return out
+
+
+def chain_segments(edges):
+    """Join undirected segments into polylines. Returns (point index arrays, closed flags)."""
+    from collections import defaultdict
+    adj = defaultdict(list)
+    for i, (a, b) in enumerate(edges.tolist()):
+        adj[a].append((b, i))
+        adj[b].append((a, i))
+    used = np.zeros(len(edges), dtype=bool)
+    chains, closed = [], []
+
+    def walk(start):
+        chain = [start]
+        cur = start
+        while True:
+            nxt = None
+            for other, ei in adj[cur]:
+                if not used[ei]:
+                    used[ei] = True
+                    nxt = other
+                    break
+            if nxt is None:
+                return chain, False
+            if nxt == start:
+                return chain, True
+            chain.append(nxt)
+            cur = nxt
+            if len(adj[cur]) != 2:
+                return chain, False
+    for v in list(adj):
+        if len(adj[v]) != 2:
+            while any(not used[ei] for _o, ei in adj[v]):
+                c, cl = walk(v)
+                chains.append(np.array(c, dtype=np.int64))
+                closed.append(cl)
+    for v in list(adj):
+        while any(not used[ei] for _o, ei in adj[v]):
+            c, cl = walk(v)
+            chains.append(np.array(c, dtype=np.int64))
+            closed.append(cl)
+    return chains, closed
