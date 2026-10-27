@@ -591,6 +591,15 @@ class PolyExtrudeSOP(SOP):
             g = np.zeros(geo.num_prims, dtype=bool)
             g[n_before:n_before + len(side)] = True
             geo.groups[PRIM][p.sidegroup] = g
+        # Original points that ended up unused (e.g. extruding a closed surface) are removed.
+        used = np.zeros(geo.num_points, dtype=bool)
+        used[geo.vtx_point] = True
+        stray = np.zeros(geo.num_points, dtype=bool)
+        stray[pts] = ~used[pts]
+        if p.splittype == 'individual':
+            stray[old_points] |= ~used[old_points]
+        if stray.any():
+            geo.delete_points(stray)
         return geo
 
 

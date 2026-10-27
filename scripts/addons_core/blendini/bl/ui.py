@@ -26,6 +26,16 @@ def _active_node(context):
     return tree, node
 
 
+def tree_for_object(obj):
+    """The Blendini network whose output is obj."""
+    if obj is None:
+        return None
+    for tree in cook.all_trees():
+        if tree.target == obj:
+            return tree
+    return None
+
+
 def _in_blendini_tree(context):
     space = context.space_data
     return space is not None and space.type == 'NODE_EDITOR' and getattr(space, 'tree_type', '') == TREE_ID
@@ -585,10 +595,7 @@ class BLENDINI_OT_houdini_layout(bpy.types.Operator):
         screen = context.screen
         if screen is None:
             return {'CANCELLED'}
-        tree = None
-        obj = context.active_object
-        if obj is not None and obj.get("blendini_tree"):
-            tree = bpy.data.node_groups.get(obj["blendini_tree"])
+        tree = tree_for_object(context.active_object)
         if tree is None:
             trees = cook.all_trees()
             tree = trees[0] if trees else None
@@ -903,12 +910,11 @@ class BLENDINI_PT_view3d(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        obj = context.active_object
-        return obj is not None and obj.get("blendini_tree") is not None
+        return tree_for_object(context.active_object) is not None
 
     def draw(self, context):
         layout = self.layout
-        tree = bpy.data.node_groups.get(context.active_object["blendini_tree"])
+        tree = tree_for_object(context.active_object)
         if tree is None:
             layout.label(text="Network not found")
             return
