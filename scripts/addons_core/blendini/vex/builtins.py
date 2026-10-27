@@ -1806,3 +1806,78 @@ def _pcfilter(I, args, mask, hint):
 @builtin('pcclose')
 def _pcclose(I, args, mask, hint):
     return None
+
+
+# ----------------------------------------------------------------------------
+# Color, bounding boxes, intrinsics
+
+
+@builtin('hsvtorgb')
+def _hsvtorgb(I, args, mask, hint):
+    hsv = _f(convert(args[0], 'vector')) if len(args) == 1 else np.stack([_f(convert(a, 'float')) for a in args], 1)
+    h = (hsv[:, 0] % 1.0) * 6.0
+    s, v = hsv[:, 1], hsv[:, 2]
+    i = np.floor(h).astype(np.int64) % 6
+    f = h - np.floor(h)
+    p, q, t = v * (1 - s), v * (1 - s * f), v * (1 - s * (1 - f))
+    r = np.choose(i, [v, q, p, p, t, v])
+    g = np.choose(i, [t, v, v, q, p, p])
+    b = np.choose(i, [p, p, t, v, v, q])
+    return V('vector', np.stack([r, g, b], axis=1))
+
+
+@builtin('rgbtohsv')
+def _rgbtohsv(I, args, mask, hint):
+    rgb = _f(convert(args[0], 'vector')) if len(args) == 1 else np.stack([_f(convert(a, 'float')) for a in args], 1)
+    mx = rgb.max(axis=1)
+    mn = rgb.min(axis=1)
+    d = mx - mn
+    safe = np.where(d == 0, 1, d)
+    r, g, b = rgb[:, 0], rgb[:, 1], rgb[:, 2]
+    h = np.where(mx == r, ((g - b) / safe) % 6, np.where(mx == g, (b - r) / safe + 2, (r - g) / safe + 4)) / 6.0
+    h = np.where(d == 0, 0.0, h)
+    s = np.where(mx == 0, 0.0, d / np.where(mx == 0, 1, mx))
+    return V('vector', np.stack([h, s, mx], axis=1))
+
+
+@builtin('getbbox')
+def _getbbox(I, args, mask, hint):
+    lo, hi = _geo(I, args[0]).bbox()
+    return const('int', 1), {1: V('vector', lo[None]), 2: V('vector', hi[None])}
+
+
+OUTARGS.add('getbbox')
+
+
+@builtin('primintrinsic')
+def _primintrinsic(I, args, mask, hint):
+    geo = _geo(I, args[0])
+    name = _uniform_str(args[1])
+    prim = full(convert(args[2], 'int'), _n(I, args[2]))
+    ok = (prim >= 0) & (prim < geo.num_prims)
+    safe = np.clip(prim, 0, max(geo.num_prims - 1, 0))
+    if geo.num_prims == 0:
+        return zeros('float', len(prim))
+    if name == 'measuredarea':
+        return V('float', np.where(ok, geo.prim_areas()[safe], 0.0))
+    if name == 'measuredperimeter':
+        P = geo.P[geo.vtx_point]
+        seg = np.linalg.norm(P[geo._next_vertex()] - P, axis=1)
+        open_last = (geo.prim_start[1:] - 1)[~geo.prim_closed & (geo.prim_sizes() > 0)]
+        seg[open_last] = 0
+        return V('float', np.where(ok, geo._sum_per_prim(seg)[safe], 0.0))
+    if name in ('vertexcount', 'pointcount'):
+        return V('int', np.where(ok, geo.prim_sizes()[safe], 0))
+    if name == 'closed':
+        return V('int', np.where(ok, geo.prim_closed[safe], 0).astype(np.int64))
+    if name == 'typename':
+        return V('string', np.array(['Poly' if c else 'Polyline' for c in geo.prim_closed[safe]], dtype=object))
+    raise VexError("primintrinsic: unsupported intrinsic '%s'" % name)
+
+
+@builtin('lookat')
+def _lookat(I, args, mask, hint):
+    frm = _f(convert(args[0], 'vector'))
+    to = _f(convert(args[1], 'vector'))
+    up = _f(convert(args[2], 'vector')) if len(args) > 2 else np.array([[0.0, 1.0, 0.0]])
+    return _maketransform(I, [V('vector', to - frm), V('vector', up)], mask, 'matrix3')

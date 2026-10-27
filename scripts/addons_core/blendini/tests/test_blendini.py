@@ -251,6 +251,80 @@ class TestSops(unittest.TestCase):
         self.assertEqual(len(np.unique(out.attribs['prim']['class'])), 3)
 
 
+TUTORIAL_SNIPPETS = {
+ 'sin': '@P.y += sin(@Time * 2 + @P.x) * chf("amp");',
+ 'dist': 'float dist = distance(@P, {0,0,0}); f@d = dist;',
+ 'curl': 'v@v = curlnoise(@P * 0.5 + @Time);',
+ 'avg': 'int npts[] = nearpoints(0, @P, 0.5); vector avg = 0; foreach(int pt; npts){ avg += point(0, "P", pt); } avg /= len(npts); @P = avg;',
+ 'remove': 'if(@P.y < 0) removepoint(0, @ptnum);',
+ 'pscale': '@pscale = fit01(rand(@ptnum + ch("seed")), 0.1, 0.3);',
+ 'orient': 'p@orient = quaternion(radians(ch("angle")), {0,1,0});',
+ 'xform': 'matrix m = maketransform(@N, {0,1,0}); 4@xform = m;',
+ 'name': 's@name = "piece" + itoa(@ptnum);',
+ 'dowhile': 'int i = 0; do { i++; } while (i < 5); i@i = i;',
+ 'hsv': '@Cd = hsvtorgb(set(rand(@ptnum), 1, 1));',
+ 'normalize': '@N = normalize(@P);',
+ 'opinput': '@P = lerp(@P, @opinput1_P, 0.5);',
+ 'xyz2': 'f@d = xyzdist(1, @P);',
+ 'getbbox': 'vector mn, mx; getbbox(0, mn, mx); v@size = mx - mn;',
+ 'addprim_arr': 'if (@ptnum == 0) { int pts[] = array(0, 1, 2); int prim = addprim(0, "polyline", pts); }',
+ 'setattr': 'setpointattrib(0, "Cd", @ptnum, {1,0,0}, "set");',
+ 'mulnoise': '@P *= 1 + noise(@P*5)*0.1;',
+ 'member': 'vector n = @N; n.y = 0; @N = n;',
+ 'atan2': 'float a = atan2(@P.z, @P.x); f@a = a;',
+ 'grpstr': 'string grp = "group_" + itoa(1); s@g = grp;',
+ 'primpts': 'int pts[] = primpoints(0, 0); vector pos = point(0, "P", pts[0]); v@p0 = pos;',
+ 'frame': 'float t = @Frame / 24.0; f@t = t;',
+ 'clamp': '@P.x = clamp(@P.x, -0.5, 0.5);',
+ 'npoints': 'int count = npoints(0); i@c = count;',
+ 'euler': 'vector4 q = eulertoquaternion(radians({0,90,0}), 0); p@orient = q;',
+ 'qmult': '@orient = qmultiply(@orient, quaternion(0.5, {0,1,0}));',
+ 'floatarr': 'float foo[] = {1.0, 2.0}; f@s = foo[1];',
+ 'vecarr': 'vector arr[]; arr[2] = {1,1,1}; i@l = len(arr);',
+ 'nbrs': 'i[]@nbrs = neighbours(0, @ptnum); i@nn = len(i[]@nbrs);',
+ 'grpwrite': '@group_top = @P.y > 0.5;',
+ 'smooth': 'float s = smooth(0, 1, @P.y); f@s = s;',
+ 'set2': 'vector2 uv = set(@P.x, @P.z); u@uv2 = uv;',
+ 'cmpwrite': '@Cd.r = @P.x > 0;',
+ 'emptyarr': 'int a[] = array(); push(a, 1); i@l = len(a);',
+ 'swz': '@P.xz = set(1, 2);',
+ 'castvec': 'vector v = vector(@P.x); v@v = v;',
+ 'intcast': 'int k = int(rand(@ptnum) * 10); i@k = k;',
+ 'primintr': 'f@area = primintrinsic(0, "measuredarea", 0);',
+ 'lookat': 'matrix3 m = lookat({0,0,0}, @N, {0,1,0}); v@x = {0,0,1} * m;',
+ 'abs_vec': 'v@a = abs(@P);',
+ 'min_vec': 'v@m = min(@P, {0,0,0});',
+ 'printf_f': 'if (@ptnum == 0) printf("%f %d %s %g\\n", @P.x, @ptnum, "hi", 1.5);',
+ 'chramp_vec': 'vector c = chramp("color", @P.y); @Cd = c;',
+ 'ternary_vec': '@Cd = @P.y > 0 ? {1,0,0} : {0,0,1};',
+ 'nested_fn': 'float sq(float x) { return x*x; } float cube(float x) { return sq(x) * x; } f@c = cube(@P.y);',
+ 'recursion': 'int fact(int n) { if (n <= 1) return 1; return n * fact(n - 1); } i@f = fact(5);',
+ 'while_break': 'int i = 0; while (1) { i++; if (i > 3) break; } i@i = i;',
+ 'string_cmp': 'string s = "abc"; if (s == "abc") i@ok = 1;',
+ 'vec_compare': 'if (@P == {0,1,0}) i@top = 1;',
+ 'int_div': 'i@d = @ptnum / 2;',
+ 'neg_mod': 'i@m = -7 % 3;',
+ 'sprintf_vec': 's@s = sprintf("%g", @P);',
+ 'relbbox': 'vector r = relbbox(0, @P); @Cd = r;',
+ 'removeprim': 'if (@ptnum == 0) removeprim(0, 0, 1);',
+ 'detail_read': 'f@x = detail(0, "missing");',
+ 'dot_dot': 'f@d = dot(@N, {0,1,0});',
+ 'const_pi': 'f@x = sin(@P.x * M_PI);',
+ 'iter_vec_fe': 'vector ps[] = {{1,2,3},{4,5,6}}; vector s = 0; foreach (vector p; ps) s += p; v@s = s;',
+}
+
+
+class TestTutorialSnippets(unittest.TestCase):
+    """Typical wrangle snippets from Houdini tutorials must all run."""
+
+    def test_snippets(self):
+        g = cook_sop('normal', [cook_sop('sphere')])
+        g2 = cook_sop('mountain', [g])
+        for name, code in TUTORIAL_SNIPPETS.items():
+            with self.subTest(name=name):
+                run_wrangle(code, [g, g2], channels={'amp': 0.5, 'seed': 1, 'angle': 45})
+
+
 class TestMoreSops(unittest.TestCase):
     def test_pcfilter_smooths(self):
         g = cook_sop('pointwrangle', [_grid(9)], snippet='f@v = @ptnum % 2;')
