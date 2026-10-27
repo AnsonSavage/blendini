@@ -10,6 +10,18 @@ VEX code over every point in parallel.
 It ships as a core add-on in this Blender fork (`scripts/addons_core/blendini`). It's
 also plain Python + numpy, so it can be zipped and installed into a stock Blender 5.x.
 
+## Installing into a regular Blender
+
+This fork ships Blendini as a core add-on, but it is pure Python + numpy and also works in a
+stock Blender (4.2+, developed against 5.2):
+
+```sh
+cd scripts/addons_core/blendini
+blender --command extension build      # creates blendini-0.1.0.zip
+```
+
+Then use *Preferences → Get Extensions → Install from Disk* with the zip.
+
 ## Quick start
 
 **Fastest:** *File → New → Blendini* (or pick Blendini on the splash screen). This

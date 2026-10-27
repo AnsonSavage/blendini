@@ -1,0 +1,19 @@
+schema_version = "1.0.0"
+
+id = "blendini"
+version = "0.1.0"
+name = "Blendini"
+tagline = "Houdini style procedural SOP networks with a VEX wrangle"
+maintainer = "Blendini Authors"
+type = "add-on"
+tags = ["Node", "Modeling", "Geometry Nodes"]
+
+blender_version_min = "4.2.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+[permissions]
+files = "Read .obj files with the File SOP and save geometry to disk"
+
+[build]
+paths_exclude_pattern = ["__pycache__/", "/tests/", "*.pyc"]
