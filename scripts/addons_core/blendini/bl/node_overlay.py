@@ -75,6 +75,7 @@ def draw():
 
 def register():
     global _handle
+    register_text()
     if bpy.app.background or _handle is not None:
         return
     _handle = bpy.types.SpaceNodeEditor.draw_handler_add(draw, (), 'WINDOW', 'POST_PIXEL')
@@ -82,9 +83,80 @@ def register():
 
 def unregister():
     global _handle
+    unregister_text()
     if _handle is not None:
         try:
             bpy.types.SpaceNodeEditor.draw_handler_remove(_handle, 'WINDOW')
         except ValueError:
             pass
         _handle = None
+
+
+# ----------------------------------------------------------------------------
+# Text editor status line for wrangle code (errors appear while you type)
+
+_text_handle = None
+
+
+def _node_for_text(text):
+    from .cook import all_trees
+    for tree in bpy.data.node_groups:
+        if tree.bl_idname != TREE_ID:
+            continue
+        for node in tree.nodes:
+            if getattr(node, 'text', None) == text:
+                return node
+    return None
+
+
+def draw_text_status():
+    context = bpy.context
+    space = context.space_data
+    text = getattr(space, 'text', None)
+    region = context.region
+    if text is None or region is None:
+        return
+    node = _node_for_text(text)
+    if node is None:
+        return
+    from . import cook
+    info = cook.node_info(node)
+    err = info.get('error')
+    msgs = info.get('messages') or []
+    if err:
+        line = "%s: %s" % (node.name, err.splitlines()[0])
+        bg, fg = (0.45, 0.08, 0.08, 0.9), (1.0, 0.9, 0.9, 1.0)
+    elif 'geo' in info:
+        g = info['geo']
+        line = "%s cooked in %.1f ms: %d points, %d primitives%s" % (
+            node.name, info.get('time', 0.0) * 1000, g.num_points, g.num_prims,
+            ("   |   " + str(msgs[-1]).strip()) if msgs else "")
+        bg, fg = (0.1, 0.25, 0.12, 0.85), (0.85, 1.0, 0.85, 1.0)
+    else:
+        return
+    h = 22
+    shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+    gpu.state.blend_set('ALPHA')
+    _rect(shader, 0, 0, region.width, h, bg)
+    gpu.state.blend_set('NONE')
+    blf.size(0, 12)
+    blf.color(0, *fg)
+    blf.position(0, 8, 6, 0)
+    blf.draw(0, line[:300])
+
+
+def register_text():
+    global _text_handle
+    if bpy.app.background or _text_handle is not None:
+        return
+    _text_handle = bpy.types.SpaceTextEditor.draw_handler_add(draw_text_status, (), 'WINDOW', 'POST_PIXEL')
+
+
+def unregister_text():
+    global _text_handle
+    if _text_handle is not None:
+        try:
+            bpy.types.SpaceTextEditor.draw_handler_remove(_text_handle, 'WINDOW')
+        except ValueError:
+            pass
+        _text_handle = None

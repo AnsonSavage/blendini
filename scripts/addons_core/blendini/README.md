@@ -66,7 +66,8 @@ Or step by step:
    - Viewport display of point numbers, primitive numbers and normals: the *Blendini* tab of
      the node editor, or the 3D viewport's sidebar.
 5. On a wrangle, click **Edit**. The VEX code opens in a Text Editor, with C-like syntax
-   highlighting, and the network **recooks live as you type**. The **+** button creates
+   highlighting, and the network **recooks live as you type**. A status bar at the bottom of
+   the editor shows syntax and runtime errors, with line numbers, or the cook time. The **+** button creates
    spare parameters for every `ch("name")` call, like Houdini's "create spare parameters"
    button.
 

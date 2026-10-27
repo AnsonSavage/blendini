@@ -487,7 +487,7 @@ def _tag_redraw():
         return
     for win in wm.windows:
         for area in win.screen.areas:
-            if area.type in ('NODE_EDITOR', 'VIEW_3D', 'SPREADSHEET'):
+            if area.type in ('NODE_EDITOR', 'VIEW_3D', 'SPREADSHEET', 'TEXT_EDITOR'):
                 area.tag_redraw()
 
 
