@@ -133,6 +133,7 @@ def _draw_code(node, layout, compact):
     op.node_name = node.name
     op = row.operator("blendini.create_spare_parms", text="", icon='ADD')
     op.node_name = node.name
+    row.operator("blendini.vex_functions", text="", icon='HELP')
     if node.text is not None:
         row = box.row(align=True)
         row.prop(node, "text", text="")
@@ -360,6 +361,39 @@ class BLENDINI_OT_edit_clear(bpy.types.Operator):
         node["edit_idx"] = []
         node["edit_delta"] = []
         cook.cook_tree(tree)
+        return {'FINISHED'}
+
+
+class BLENDINI_OT_copy_text(bpy.types.Operator):
+    """Copy to the clipboard"""
+    bl_idname = "blendini.copy_text"
+    bl_label = "Copy"
+    text: StringProperty()
+
+    def execute(self, context):
+        context.window_manager.clipboard = self.text
+        self.report({'INFO'}, "Copied '%s'" % self.text)
+        return {'FINISHED'}
+
+
+class BLENDINI_OT_vex_functions(bpy.types.Operator):
+    """List the VEX functions Blendini supports (click to copy)"""
+    bl_idname = "blendini.vex_functions"
+    bl_label = "VEX Functions"
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_popup(self, width=720)
+
+    def draw(self, context):
+        from ..vex import builtins
+        layout = self.layout
+        layout.label(text="Supported VEX functions (%d). Click to copy." % len(builtins.FUNCTIONS), icon='SCRIPT')
+        flow = layout.column_flow(columns=6, align=True)
+        for name in sorted(builtins.FUNCTIONS):
+            op = flow.operator("blendini.copy_text", text=name, emboss=False)
+            op.text = name + "()"
+
+    def execute(self, context):
         return {'FINISHED'}
 
 
@@ -1114,6 +1148,8 @@ classes = (
     BLENDINI_OT_set_display,
     BLENDINI_OT_toggle_bypass,
     BLENDINI_OT_cook,
+    BLENDINI_OT_copy_text,
+    BLENDINI_OT_vex_functions,
     BLENDINI_OT_dive_in,
     BLENDINI_OT_jump_up,
     BLENDINI_OT_edit_begin,
