@@ -31,6 +31,19 @@ def _temp_collection():
     return coll
 
 
+def _release_temp_collection():
+    coll = bpy.data.collections.get(_TEMP_COLLECTION)
+    if coll is not None and not coll.objects:
+        bpy.data.collections.remove(coll)
+
+
+def remove_stale_rbd_scenes():
+    """Private RBD scenes don't survive a reload of the solver state: remove leftovers."""
+    for scene in list(bpy.data.scenes):
+        if scene.name.startswith("_blendini_rbd_"):
+            _rbd_cleanup({'scene': scene.name})
+
+
 def _in(inputs, i=0):
     if len(inputs) > i and inputs[i] is not None:
         return inputs[i]
@@ -71,6 +84,7 @@ def apply_modifier(geo, mod_type, settings=None, extra_objects=()):
             m = oo.data
             bpy.data.objects.remove(oo)
             bpy.data.meshes.remove(m)
+        _release_temp_collection()
     return out
 
 
@@ -396,6 +410,7 @@ class FontSOP(SOP):
         finally:
             bpy.data.objects.remove(obj)
             bpy.data.curves.remove(curve)
+            _release_temp_collection()
         geo.P = geo.P + np.asarray(p.t)
         return geo
 

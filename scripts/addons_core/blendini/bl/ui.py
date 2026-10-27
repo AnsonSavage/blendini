@@ -1122,6 +1122,11 @@ def on_frame_change(scene, depsgraph=None):
 @persistent
 def on_load_post(*_args):
     cook.clear_cache()
+    try:
+        from ..sops.blender_ops import remove_stale_rbd_scenes
+        remove_stale_rbd_scenes()
+    except Exception as ex:
+        print("Blendini:", ex)
     for tree in cook.all_trees():
         if tree.auto_cook:
             cook.request_cook(tree)
