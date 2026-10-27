@@ -29,6 +29,14 @@ def _request_cook(self, context=None):
         cook.request_cook(tree)
 
 
+def _revisualize(tree):
+    from . import cook
+    cook.forget_written(tree)
+    cook.request_cook(tree)
+    if bpy.app.background:
+        cook.cook_tree(tree)
+
+
 def _redraw_views():
     wm = bpy.context.window_manager
     for win in (wm.windows if wm else ()):
@@ -97,6 +105,9 @@ class BlendiniNodeTree(bpy.types.NodeTree):
                                description="Display normals in the viewport")
     normal_scale: FloatProperty(name="Normal Scale", default=1.0, min=0.0, soft_max=10.0,
                                 update=lambda s, c: _redraw_views())
+    visualize: StringProperty(name="Visualize Attribute", default="",
+                              description="Show this point / primitive attribute as false color in the viewport",
+                              update=lambda s, c: _revisualize(s))
     sheet_class: EnumProperty(name="Class", items=[
         ('point', "Points", ""), ('vertex', "Vertices", ""), ('prim', "Primitives", ""), ('detail', "Detail", ""),
     ])

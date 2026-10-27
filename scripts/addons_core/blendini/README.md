@@ -64,7 +64,8 @@ Or step by step:
    - 3D viewport sidebar → *Blendini* tab: a Houdini-style **Create shelf** (Box, Sphere,
      Tube, Torus, Grid, ... each makes a new geometry object with that SOP inside).
    - Viewport display of point numbers, primitive numbers and normals: the *Blendini* tab of
-     the node editor, or the 3D viewport's sidebar.
+     the node editor, or the 3D viewport's sidebar. That sidebar also has a **Visualize
+     Attribute** field, which shows any point or primitive attribute as false color.
 5. On a wrangle, click **Edit**. The VEX code opens in a Text Editor, with C-like syntax
    highlighting, and the network **recooks live as you type**. A status bar at the bottom of
    the editor shows syntax and runtime errors, with line numbers, or the cook time. The

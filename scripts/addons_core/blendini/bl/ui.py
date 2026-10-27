@@ -1155,6 +1155,14 @@ class BLENDINI_PT_view3d(bpy.types.Panel):
         if tree.show_normals:
             col.prop(tree, "normal_scale")
         node = cook.display_node(tree)
+        geo_now = cook.node_geometry(node) if node is not None else None
+        if geo_now is not None:
+            names = sorted(n for c in ('point', 'prim') for n, a in geo_now.attribs[c].items()
+                           if not n.startswith('__') and a.dtype != object)
+            row = layout.row(align=True)
+            row.prop(tree, "visualize", text="", icon='COLOR')
+            if names:
+                row.label(text="(%s)" % ", ".join(names[:6]))
         geo = cook.node_geometry(node) if node is not None else None
         if geo is not None:
             box = layout.box()

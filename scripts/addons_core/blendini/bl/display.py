@@ -255,3 +255,50 @@ def ensure_material(obj):
             mesh.materials.append(cd_material())
         except Exception as ex:
             print("Blendini: could not create the Cd material:", ex)
+
+
+VIS_NAME = "visualize"
+
+
+def visualize_attribute(obj, geo, name):
+    """Write a false-color 'visualize' color attribute and make it the displayed color."""
+    import numpy as np
+    from ..sops.attribs import _infra_red
+    mesh = obj.data
+    if not name:
+        old = mesh.color_attributes.get(VIS_NAME)
+        if old is not None:
+            mesh.color_attributes.remove(old)
+        cd = mesh.color_attributes.get('Cd')
+        if cd is not None:
+            mesh.color_attributes.active_color = cd
+        return
+    domain = None
+    arr = geo.attribs['point'].get(name)
+    if arr is not None:
+        domain = 'POINT'
+    else:
+        arr = geo.attribs['prim'].get(name)
+        if arr is not None:
+            # Only polygons become Blender faces.
+            sizes = geo.prim_sizes()
+            arr = arr[geo.prim_closed & (sizes >= 3)]
+            domain = 'FACE'
+    if arr is None or arr.dtype == object:
+        return
+    v = arr.astype(np.float64)
+    if v.ndim > 1:
+        v = np.linalg.norm(v.reshape(len(v), -1), axis=1) if v.shape[1] != 1 else v[:, 0]
+    lo, hi = (float(v.min()), float(v.max())) if len(v) else (0.0, 1.0)
+    u = (v - lo) / (hi - lo if hi > lo else 1.0)
+    rgba = np.ones((len(u), 4), dtype=np.float32)
+    rgba[:, :3] = _infra_red(u)
+    old = mesh.color_attributes.get(VIS_NAME)
+    if old is not None:
+        mesh.color_attributes.remove(old)
+    attr = mesh.color_attributes.new(VIS_NAME, 'FLOAT_COLOR', domain)
+    if len(attr.data) != len(rgba):
+        mesh.color_attributes.remove(attr)
+        return
+    attr.data.foreach_set("color", rgba.ravel())
+    mesh.color_attributes.active_color = attr

@@ -63,6 +63,10 @@ def is_cooking():
     return _cooking
 
 
+def forget_written(tree):
+    _cache.pop(('__written__', _tree_key(tree)), None)
+
+
 # ----------------------------------------------------------------------------
 # Scheduling
 
@@ -468,8 +472,9 @@ def cook_tree(tree, frame=None):
                 for m in mats:
                     obj.data.materials.append(m)
             obj.data.update()
-            from .display import sync_instances
+            from .display import sync_instances, visualize_attribute
             sync_instances(tree, obj, geo)
+            visualize_attribute(obj, geo, tree.visualize.strip())
             _cache[tkey] = (sig, obj.data.name)
         try:
             update_colors(tree)
