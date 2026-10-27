@@ -398,7 +398,7 @@ class BLENDINI_OT_apply_preset(bpy.types.Operator):
             node.p_class = 'prim'
         if '(Detail)' in name and hasattr(node, 'p_class'):
             node.p_class = 'detail'
-        bpy.ops.blendini.create_spare_parms(node_name=node.name)
+        create_spare_parms(node)
         # Sensible defaults for the new spare parameters.
         defaults = {'amp': 0.3, 'freq': 2.0, 'seed': 0.0, 'min_scale': 0.05, 'max_scale': 0.2, 'keep': 0.5,
                     'radius': 0.5, 'maxpts': 5, 'speed': 1.0, 'degrees_per_unit': 45.0, 'count': 200, 'turns': 4.0,
@@ -527,27 +527,33 @@ class BLENDINI_OT_create_spare_parms(bpy.types.Operator):
         return _in_blendini_tree(context)
 
     def execute(self, context):
-        from ..vex.wrangle import find_channels
         tree, node = _get_node(context, self.node_name)
         if node is None:
             return {'CANCELLED'}
-        code = node.parm_values().get('snippet', '')
-        existing = {sp.name for sp in node.spare}
-        added = 0
-        for name, kind in find_channels(code):
-            if name in existing:
-                continue
-            sp = node.spare.add()
-            sp.name = name
-            sp.kind = {'vector2': 'vector', 'vector4': 'vector'}.get(kind, kind)
-            if kind == 'ramp':
-                from .ramps import new_key, ramp_node
-                sp.ramp_key = new_key()
-                ramp_node(sp.ramp_key, create=True)
-            added += 1
+        added = create_spare_parms(node)
         self.report({'INFO'}, "Added %d spare parameter(s)" % added)
         cook.request_cook(tree)
         return {'FINISHED'}
+
+
+def create_spare_parms(node):
+    """Add a spare parameter for each ch*() call in the node's code. Returns how many were added."""
+    from ..vex.wrangle import find_channels
+    code = node.parm_values().get('snippet', '')
+    existing = {sp.name for sp in node.spare}
+    added = 0
+    for name, kind in find_channels(code):
+        if name in existing:
+            continue
+        sp = node.spare.add()
+        sp.name = name
+        sp.kind = {'vector2': 'vector', 'vector4': 'vector'}.get(kind, kind)
+        if kind == 'ramp':
+            from .ramps import new_key, ramp_node
+            sp.ramp_key = new_key()
+            ramp_node(sp.ramp_key, create=True)
+        added += 1
+    return added
 
 
 class BLENDINI_OT_remove_spare_parm(bpy.types.Operator):
