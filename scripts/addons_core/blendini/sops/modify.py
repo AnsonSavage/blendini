@@ -2357,3 +2357,86 @@ class PointDeformSOP(SOP):
         move = np.einsum('nk,nkj->nj', w / np.where(wsum == 0, 1, wsum), offset[idx])
         geo.P = P + move
         return geo
+
+
+@register_sop
+class MirrorSOP(SOP):
+    id = 'mirror'
+    label = "Mirror"
+    category = 'Manipulate'
+    inputs = 1
+    icon = 'MOD_MIRROR'
+    parms = (
+        Parm('origin', "Origin", 'vector'),
+        Parm('dir', "Direction", 'vector', default=(1.0, 0.0, 0.0)),
+        Parm('keepOriginal', "Keep Original", 'bool', default=True),
+        Parm('consolidatepts', "Consolidate Seam", 'bool', default=True),
+        Parm('consolidatetol', "Distance", 'float', default=0.001, min=0, hide_when={'consolidatepts': False}),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs)
+        n = np.asarray(p.dir, dtype=np.float64)
+        ln = np.linalg.norm(n)
+        if ln == 0:
+            return geo.copy()
+        n /= ln
+        o = np.asarray(p.origin)
+        refl = np.eye(4)
+        refl[:3, :3] -= 2 * np.outer(n, n)
+        refl[:3, 3] = 2 * np.dot(o, n) * n
+        mirrored = geo.copy().transform(refl)
+        # Reflection flips winding: reverse the primitives so normals face outwards.
+        from . import cook_sop
+        mirrored = cook_sop('reverse', [mirrored])
+        out = merge([geo, mirrored]) if p.keepOriginal else mirrored
+        if p.keepOriginal and p.consolidatepts:
+            fuse_points(out, p.consolidatetol)
+        return out
+
+
+@register_sop
+class PrimitiveSOP(SOP):
+    id = 'primitive'
+    label = "Primitive"
+    category = 'Manipulate'
+    inputs = 1
+    icon = 'FACESEL'
+    description = "Transform each primitive around its own centroid"
+    parms = (
+        Parm('group', "Group", 'string'),
+        Parm('t', "Translate", 'vector'),
+        Parm('r', "Rotate", 'vector'),
+        Parm('s', "Scale", 'vector', default=(1.0, 1.0, 1.0)),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs).copy()
+        sel = parse_group_pattern(geo, PRIM, p.group)
+        if not sel.any():
+            return geo
+        geo.unique_points()
+        centers = geo.prim_centers()
+        R = transform_matrix(r=p.r, s=p.s)[:3, :3]
+        vp = geo.vertex_prim()
+        P = geo.P.copy()
+        v = np.nonzero(sel[vp])[0]
+        c = centers[vp[v]]
+        P[geo.vtx_point[v]] = (P[geo.vtx_point[v]] - c) @ R.T + c + np.asarray(p.t)
+        geo.P = P
+        return geo
+
+
+@register_sop
+class AttribBlurSOP(SmoothSOP):
+    id = 'attribblur'
+    label = "Attribute Blur"
+    category = 'Attribute'
+    icon = 'MOD_SMOOTH'
+    parms = (
+        Parm('group', "Group", 'string'),
+        Parm('attribs', "Attributes", 'string', default='Cd'),
+        Parm('strength', "Step Size", 'float', default=0.5, min=0, soft_max=1),
+        Parm('iterations', "Blurring Iterations", 'int', default=10, min=0, soft_max=100),
+        Parm('pinborder', "Pin Border Points", 'bool', default=False),
+    )
