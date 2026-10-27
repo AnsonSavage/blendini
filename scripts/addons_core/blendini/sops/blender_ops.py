@@ -323,9 +323,10 @@ class BlenderModifierSOP(SOP):
     description = "Run any Blender modifier, including Geometry Nodes groups"
     parms = (
         Parm('modtype', "Modifier", 'enum', items=_MODIFIER_ITEMS),
-        Parm('nodegroup', "Node Group", 'string', hide_when={'modtype': tuple(i[0] for i in _MODIFIER_ITEMS if i[0] != 'NODES')},
+        Parm('nodegroup', "Node Group", 'nodegroup', hide_when={'modtype': tuple(i[0] for i in _MODIFIER_ITEMS if i[0] != 'NODES')},
              description="Name of a Geometry Nodes group"),
-        Parm('settings', "Settings", 'string', description="Python style assignments, e.g. levels=2; quality=3"),
+        Parm('settings', "Settings", 'string',
+             description="Assignments separated by ';', e.g. levels=2; quality=3 (Geometry Nodes: input names, e.g. Count=10)"),
     )
 
     def cook(self, inputs, p, ctx):
@@ -347,8 +348,8 @@ class BlenderModifierSOP(SOP):
                 except (ValueError, SyntaxError):
                     value = val
                 try:
-                    if p.modtype == 'NODES' and key not in dir(mod):
-                        mod[key] = value
+                    if p.modtype == 'NODES' and not hasattr(mod, key):
+                        _set_group_input(mod, key, value)
                     else:
                         setattr(mod, key, value)
                 except (AttributeError, TypeError, ValueError) as ex:
@@ -397,3 +398,18 @@ class FontSOP(SOP):
             bpy.data.curves.remove(curve)
         geo.P = geo.P + np.asarray(p.t)
         return geo
+
+
+def _set_group_input(mod, key, value):
+    """Set a Geometry Nodes modifier input by socket name or identifier."""
+    from ..bl.display import _set_modifier_input
+    ident = None
+    for item in mod.node_group.interface.items_tree:
+        if getattr(item, 'in_out', None) == 'INPUT' and key in (item.name, item.identifier):
+            ident = item.identifier
+            break
+    if ident is None:
+        raise CookError("Geometry Nodes group has no input '%s'" % key)
+    if isinstance(value, (list, tuple)):
+        value = tuple(value)
+    _set_modifier_input(mod, ident, value)

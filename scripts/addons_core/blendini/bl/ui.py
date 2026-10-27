@@ -90,6 +90,8 @@ def draw_parms(node, context, layout, compact=False):
             _draw_code(node, col, compact)
         elif parm.type == 'object':
             col.prop_search(node, pname, bpy.data, "objects", text=parm.label)
+        elif parm.type == 'nodegroup':
+            col.prop_search(node, pname, bpy.data, "node_groups", text=parm.label)
         elif parm.type in ('vector', 'vector2') and not compact:
             row = col.row(align=True)
             row.prop(node, pname, text=parm.label)
