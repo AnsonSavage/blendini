@@ -500,6 +500,25 @@ class BLENDINI_OT_vex_functions(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class BLENDINI_OT_recook_text(bpy.types.Operator):
+    """Recook the networks that use the VEX code in this Text"""
+    bl_idname = "blendini.recook_text"
+    bl_label = "Recook Blendini Wrangle"
+
+    @classmethod
+    def poll(cls, context):
+        text = getattr(context.space_data, 'text', None)
+        return text is not None and any(getattr(n, 'text', None) == text
+                                        for t in bpy.data.node_groups if t.bl_idname == TREE_ID for n in t.nodes)
+
+    def execute(self, context):
+        text = context.space_data.text
+        for tree in bpy.data.node_groups:
+            if tree.bl_idname == TREE_ID and any(getattr(n, 'text', None) == text for n in tree.nodes):
+                cook.cook_tree(tree)
+        return {'FINISHED'}
+
+
 class BLENDINI_OT_cook(bpy.types.Operator):
     """Force a full recook of the network"""
     bl_idname = "blendini.cook"
@@ -1363,6 +1382,7 @@ classes = (
     BLENDINI_OT_set_display,
     BLENDINI_OT_toggle_bypass,
     BLENDINI_OT_cook,
+    BLENDINI_OT_recook_text,
     BLENDINI_OT_copy_text,
     BLENDINI_OT_apply_preset,
     BLENDINI_MT_vex_presets,
@@ -1418,6 +1438,9 @@ def register():
         addon_keymaps.append((km, km.keymap_items.new(BLENDINI_OT_dive_in.bl_idname, 'I', 'PRESS')))
         addon_keymaps.append((km, km.keymap_items.new(BLENDINI_OT_jump_up.bl_idname, 'U', 'PRESS')))
         addon_keymaps.append((km, km.keymap_items.new(BLENDINI_OT_vop_jump_up.bl_idname, 'U', 'PRESS')))
+        km_text = kc.keymaps.new(name="Text", space_type='TEXT_EDITOR')
+        addon_keymaps.append((km_text, km_text.keymap_items.new(BLENDINI_OT_recook_text.bl_idname, 'RET', 'PRESS',
+                                                                ctrl=True)))
 
 
 def unregister():
