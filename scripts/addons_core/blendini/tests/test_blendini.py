@@ -326,6 +326,38 @@ class TestTutorialSnippets(unittest.TestCase):
                 run_wrangle(code, [g, g2], channels={'amp': 0.5, 'seed': 1, 'angle': 45})
 
 
+class TestSmoke(unittest.TestCase):
+    """Cook every SOP with its defaults and each enum / toggle variant."""
+
+    def test_all_sops(self):
+        from blendini.sops import REGISTRY, default_parms, CookContext, CookError
+        box, grid, sphere = cook_sop('box'), cook_sop('grid'), cook_sop('sphere')
+        line = cook_sop('line', points=10)
+        pts = cook_sop('scatter', [sphere], npts=50)
+        hf = cook_sop('heightfield', size=(2.0, 2.0), gridspacing=0.2)
+        special = {'hfnoise': [hf], 'hferode': [hf], 'sweep': [line], 'polyframe': [line], 'resample': [line],
+                   'copytopoints': [box, pts], 'attribtransfer': [grid, sphere], 'vellum': [grid, sphere],
+                   'fluidsolver': [pts], 'ends': [cook_sop('circle')]}
+        for sop_id, sop in sorted(REGISTRY.items()):
+            inputs = special.get(sop_id, [sphere, box, grid, pts][:sop.inputs])
+            variants = [{}]
+            for parm in sop.parms:
+                if parm.type == 'enum':
+                    variants += [{parm.name: item[0]} for item in parm.items[1:]]
+                elif parm.type == 'bool':
+                    variants.append({parm.name: not parm.default})
+            for v in variants:
+                with self.subTest(sop=sop_id, variant=v):
+                    p = default_parms(sop_id)
+                    p.update(v)
+                    ctx = CookContext(frame=3, time=2 / 24, state={})
+                    ctx.channels, ctx.ramps = {}, {}
+                    try:
+                        self.assertIsNotNone(sop.cook(list(inputs), p, ctx))
+                    except CookError:
+                        pass
+
+
 class TestMoreSops(unittest.TestCase):
     def test_pcfilter_smooths(self):
         g = cook_sop('pointwrangle', [_grid(9)], snippet='f@v = @ptnum % 2;')
