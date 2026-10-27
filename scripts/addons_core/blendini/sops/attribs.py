@@ -400,6 +400,7 @@ class SolverWrangleSOP(_WrangleBase):
     """A tiny SOP Solver: the snippet runs every frame on the previous frame's result."""
     id = 'solverwrangle'
     label = "Solver (VEX)"
+    category = 'Simulation'
     inputs = 2
     input_labels = ("Initial State", "Collision / Extra")
     icon = 'PHYSICS'

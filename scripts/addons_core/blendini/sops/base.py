@@ -15,7 +15,8 @@ import numpy as np
 REGISTRY = {}
 
 # Categories in the TAB menu (Houdini style).
-CATEGORIES = ['Primitive', 'Manipulate', 'Polygon', 'Attribute', 'Group', 'Copy', 'Utility', 'VEX', 'Blender']
+CATEGORIES = ['Primitive', 'Manipulate', 'Polygon', 'Attribute', 'Group', 'Copy', 'Simulation', 'Terrain', 'Utility',
+              'VEX', 'Blender']
 
 # Node header colors per category.
 CATEGORY_COLORS = {
@@ -28,6 +29,8 @@ CATEGORY_COLORS = {
     'Utility': (0.32, 0.32, 0.32),
     'VEX': (0.50, 0.30, 0.38),
     'Blender': (0.50, 0.38, 0.22),
+    'Simulation': (0.25, 0.40, 0.55),
+    'Terrain': (0.36, 0.42, 0.25),
 }
 
 

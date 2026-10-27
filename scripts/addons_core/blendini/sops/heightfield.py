@@ -46,7 +46,7 @@ def hf_set(geo, H):
 class HeightFieldSOP(SOP):
     id = 'heightfield'
     label = "HeightField"
-    category = 'Primitive'
+    category = 'Terrain'
     icon = 'RNDCURVE'
     parms = (
         Parm('size', "Size", 'vector2', default=(20.0, 20.0)),
@@ -76,7 +76,7 @@ class HeightFieldSOP(SOP):
 class HeightFieldNoiseSOP(SOP):
     id = 'hfnoise'
     label = "HeightField Noise"
-    category = 'Manipulate'
+    category = 'Terrain'
     inputs = 1
     icon = 'MOD_NOISE'
     parms = (
@@ -167,7 +167,7 @@ def flow_accumulation(H):
 class HeightFieldErodeSOP(SOP):
     id = 'hferode'
     label = "HeightField Erode"
-    category = 'Manipulate'
+    category = 'Terrain'
     inputs = 1
     icon = 'FORCE_TURBULENCE'
     parms = (

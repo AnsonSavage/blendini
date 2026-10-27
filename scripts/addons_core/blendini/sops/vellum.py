@@ -114,7 +114,7 @@ def pbd_step(state, dt, p, collider):
 class VellumSOP(SOP):
     id = 'vellum'
     label = "Vellum Cloth (PBD)"
-    category = 'Manipulate'
+    category = 'Simulation'
     inputs = 2
     input_labels = ("Cloth Geometry", "Collision Geometry")
     icon = 'MOD_CLOTH'

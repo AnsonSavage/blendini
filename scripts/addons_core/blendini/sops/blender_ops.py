@@ -586,7 +586,7 @@ def _add_rigid_body(scene, ob, kind):
 class RBDSolverSOP(SOP):
     id = 'rbdsolver'
     label = "RBD Bullet Solver"
-    category = 'Manipulate'
+    category = 'Simulation'
     inputs = 2
     input_labels = ("Pieces", "Static Colliders")
     icon = 'RIGID_BODY'

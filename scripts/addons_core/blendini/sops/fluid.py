@@ -120,7 +120,7 @@ def pbf_step(st, dt, p):
 class FluidSolverSOP(SOP):
     id = 'fluidsolver'
     label = "Fluid Solver (PBF)"
-    category = 'Manipulate'
+    category = 'Simulation'
     inputs = 1
     input_labels = ("Fluid Particles",)
     icon = 'MOD_FLUIDSIM'
