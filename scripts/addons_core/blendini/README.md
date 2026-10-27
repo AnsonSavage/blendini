@@ -186,9 +186,13 @@ blendini/
 
 Cooking is signature-based. Each node result is cached with a hash of its parameters,
 its inputs' signatures and, when time dependent, the frame. Only nodes whose upstream
-changed recook, like Houdini's dirty propagation. Parameters can be animated with
-Blender keyframes or drivers (`#frame`), which play the role of Houdini's `$F`
-expressions.
+changed recook, like Houdini's dirty propagation.
+
+Parameters can be keyframed (**I** over a field) or given a driver expression, which plays
+the role of a Houdini parameter expression. Type `#frame * 0.5` or `#sin(frame / 10) * 2`
+into any field. Blendini evaluates these itself, because Blender doesn't evaluate
+animation on custom node trees. Driver expressions run through the VEX interpreter with
+`frame`, `time` and `fps` defined, so they are safe to open from any file.
 
 Run the tests (no Blender required, only numpy):
 

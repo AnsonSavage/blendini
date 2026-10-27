@@ -436,6 +436,9 @@ def cook_tree(tree, frame=None):
         fps = scene.render.fps / scene.render.fps_base if scene else 24.0
         if frame is None:
             frame = scene.frame_current + scene.frame_subframe if scene else 1.0
+        # Keyframes and drivers on the network (and its subnetworks) are applied here.
+        from .animation import apply_all
+        apply_all(float(frame), fps)
         ctx_base = {
             'frame': float(frame), 'time': float(frame - 1) / fps, 'fps': fps,
             'animated': _tree_has_animation(tree), 'objmerge_epoch': _objmerge_epoch,
