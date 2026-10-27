@@ -814,3 +814,84 @@ class ParticleFluidSurfaceSOP(SOP):
             for name, value in vals.items():
                 _set_group_input(mod, name, float(value))
         return apply_modifier(pts, 'NODES', settings)
+
+
+@register_sop
+class UVUnwrapSOP(SOP):
+    id = 'uvunwrap'
+    label = "UV Unwrap"
+    category = 'Attribute'
+    inputs = 1
+    icon = 'UV'
+    description = "UV unwrap with Blender's Smart UV Project / Unwrap (writes vertex uv)"
+    parms = (
+        Parm('method', "Method", 'enum', items=[('smart', "Smart UV Project", ""), ('unwrap', "Angle Based Unwrap", ""),
+                                                ('cube', "Cube Projection", "")]),
+        Parm('angle', "Angle Limit", 'float', default=66.0, min=1, max=89, hide_when={'method': ('unwrap', 'cube')}),
+        Parm('margin', "Island Margin", 'float', default=0.02, min=0, max=1),
+    )
+
+    def cook(self, inputs, p, ctx):
+        import math
+        from ..bl.mesh_io import geo_to_mesh, mesh_to_geo
+        from ..core.geometry import VERTEX
+        geo = _in(inputs)
+        if geo.num_prims == 0:
+            return geo
+        coll = _temp_collection()
+        mesh = bpy.data.meshes.new("_blendini_uv")
+        geo_to_mesh(geo, mesh)
+        if mesh.uv_layers.get('uv') is None:
+            mesh.uv_layers.new(name='uv')
+        mesh.uv_layers.active = mesh.uv_layers['uv']
+        obj = bpy.data.objects.new("_blendini_uv", mesh)
+        coll.objects.link(obj)
+        view_layer = bpy.context.view_layer
+        prev_active = view_layer.objects.active
+        prev_selected = [o for o in view_layer.objects if o.select_get()]
+        try:
+            for o in prev_selected:
+                o.select_set(False)
+            view_layer.objects.active = obj
+            obj.select_set(True)
+            with bpy.context.temp_override(active_object=obj, object=obj, selected_objects=[obj],
+                                           selected_editable_objects=[obj]):
+                bpy.ops.object.mode_set(mode='EDIT')
+                bpy.ops.mesh.select_all(action='SELECT')
+                if p.method == 'smart':
+                    bpy.ops.uv.smart_project(angle_limit=math.radians(p.angle), island_margin=p.margin)
+                elif p.method == 'unwrap':
+                    bpy.ops.uv.unwrap(method='ANGLE_BASED', margin=p.margin)
+                else:
+                    bpy.ops.uv.cube_project()
+                bpy.ops.object.mode_set(mode='OBJECT')
+            out = geo.copy()
+            n = len(mesh.loops)
+            uv = np.empty(n * 2, dtype=np.float32)
+            mesh.uv_layers['uv'].data.foreach_get("uv", uv)
+            # Loops follow the face order of the polygons that were written.
+            sizes = geo.prim_sizes()
+            face_mask = geo.prim_closed & (sizes >= 3)
+            vmask = np.repeat(face_mask, sizes)
+            full = np.zeros((geo.num_vertices, 3))
+            if vmask.sum() == n:
+                full[vmask, :2] = uv.reshape(-1, 2)
+            out.attribs[VERTEX]['uv'] = full
+            return out
+        except RuntimeError as ex:
+            raise CookError("UV unwrap failed: %s" % ex)
+        finally:
+            if obj.mode != 'OBJECT':
+                try:
+                    with bpy.context.temp_override(active_object=obj, object=obj):
+                        bpy.ops.object.mode_set(mode='OBJECT')
+                except RuntimeError:
+                    pass
+            bpy.data.objects.remove(obj)
+            bpy.data.meshes.remove(mesh)
+            _release_temp_collection()
+            for o in prev_selected:
+                if view_layer.objects.get(o.name) is not None:
+                    o.select_set(True)
+            if prev_active is not None and view_layer.objects.get(prev_active.name) is not None:
+                view_layer.objects.active = prev_active
