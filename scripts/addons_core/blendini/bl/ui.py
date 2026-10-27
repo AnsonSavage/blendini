@@ -1202,10 +1202,17 @@ class BLENDINI_OT_tab_menu(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return _in_blendini_tree(context) and context.space_data.edit_tree is not None
+        from .vop import VOP_TREE_ID
+        space = context.space_data
+        if space is None or space.type != 'NODE_EDITOR' or space.edit_tree is None:
+            return False
+        return space.tree_type in (TREE_ID, VOP_TREE_ID)
 
     def invoke(self, context, event):
-        bpy.ops.wm.call_menu(name=BLENDINI_MT_tab.bl_idname)
+        if context.space_data.tree_type == TREE_ID:
+            bpy.ops.wm.call_menu(name=BLENDINI_MT_tab.bl_idname)
+        else:
+            bpy.ops.wm.call_menu(name="NODE_MT_add")
         return {'FINISHED'}
 
 
