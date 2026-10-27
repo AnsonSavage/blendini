@@ -50,7 +50,9 @@ Or step by step:
    - **R**: set the display flag on the active node.
    - **M**: bypass (Blender's mute, shown as a pass-through).
    - Each node has **display**, **template** (ghosted wireframe guide) and **bypass** flag
-     buttons.
+     buttons. As in Houdini, the active flags are drawn as colored bars on the node edges:
+     blue for display, pink for template, yellow for bypass, red for errors. The node type is
+     shown under each node.
    - **N** sidebar → **Parameters** tab: the parameter pane and the geometry info
      (point and primitive counts, attributes, groups, cook time, `printf` output), plus
      *Save Geometry to Disk* (.obj).
@@ -204,5 +206,5 @@ there is no Python SOP.
 ## Not done yet (ideas)
 
 NURBS and Bézier primitives, volumes/VDB, a full DOP context (constraints, FLIP meshing, Pyro), VOPs, VEX `struct`s
-and macros, viewport handles/states, and a multi-line code editor inside the parameter
+and function-like macros, viewport handles/states, and a multi-line code editor inside the parameter
 pane. Today the code is edited in Blender's Text Editor, which recooks live.

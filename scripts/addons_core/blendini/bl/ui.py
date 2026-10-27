@@ -1221,8 +1221,9 @@ def _all_classes():
 def register():
     for cls in _all_classes():
         bpy.utils.register_class(cls)
-    from . import overlay
+    from . import overlay, node_overlay
     overlay.register()
+    node_overlay.register()
     bpy.types.VIEW3D_MT_add.append(draw_view3d_add)
     bpy.app.handlers.frame_change_post.append(on_frame_change)
     bpy.app.handlers.load_post.append(on_load_post)
@@ -1239,8 +1240,9 @@ def register():
 
 
 def unregister():
-    from . import overlay
+    from . import overlay, node_overlay
     overlay.unregister()
+    node_overlay.unregister()
     for km, kmi in addon_keymaps:
         try:
             km.keymap_items.remove(kmi)
