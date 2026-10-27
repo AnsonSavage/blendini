@@ -535,12 +535,15 @@ class BLENDINI_OT_new_network(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     starter: BoolProperty(name="Starter Network", default=True)
+    primitive: StringProperty(name="Primitive", default="",
+                              description="Create the network with just this SOP (Houdini shelf tool)")
 
     def execute(self, context):
+        base = self.primitive or "geo"
         i = 1
-        while bpy.data.node_groups.get("geo%d" % i) or bpy.data.objects.get("geo%d" % i):
+        while bpy.data.node_groups.get("%s%d" % (base, i)) or bpy.data.objects.get("%s%d" % (base, i)):
             i += 1
-        name = "geo%d" % i
+        name = "%s%d" % (base, i)
         tree = bpy.data.node_groups.new(name, TREE_ID)
         tree.use_fake_user = True
         mesh = bpy.data.meshes.new(name)
@@ -555,7 +558,11 @@ class BLENDINI_OT_new_network(bpy.types.Operator):
             o.select_set(False)
         obj.select_set(True)
         context.view_layer.objects.active = obj
-        if self.starter:
+        if self.primitive:
+            node = tree.nodes.new(NODE_PREFIX + self.primitive)
+            node.display_flag = True
+            tree.nodes.active = node
+        elif self.starter:
             build_starter(tree)
         show_tree_in_editor(context, tree)
         cook.cook_tree(tree)
@@ -935,6 +942,33 @@ class BLENDINI_PT_network(bpy.types.Panel):
         col.label(text="Ctrl+Enter in text editor: recook")
 
 
+SHELF_TOOLS = ('box', 'sphere', 'tube', 'torus', 'grid', 'circle', 'line', 'platonic', 'font', 'lsystem')
+
+
+class BLENDINI_PT_shelf(bpy.types.Panel):
+    """Houdini's Create shelf: each tool makes a new geometry object with that SOP inside"""
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Blendini"
+    bl_label = "Create"
+
+    def draw(self, context):
+        layout = self.layout
+        flow = layout.grid_flow(columns=2, even_columns=True, align=True)
+        for sop_id in SHELF_TOOLS:
+            sop = REGISTRY.get(sop_id)
+            if sop is None:
+                continue
+            op = flow.operator("blendini.new_network", text=sop.label, icon=sop.icon if sop.icon != 'NONE' else 'NODE')
+            op.primitive = sop_id
+            op.starter = False
+        col = layout.column(align=True)
+        op = col.operator("blendini.new_network", text="Empty Geometry", icon='MESH_DATA')
+        op.starter = False
+        op.primitive = ""
+        col.operator("blendini.load_examples", icon='PRESET')
+
+
 class BLENDINI_PT_view3d(bpy.types.Panel):
     """Display options for the Blendini network of the active object (Houdini's display toolbar)"""
     bl_space_type = 'VIEW_3D'
@@ -1168,6 +1202,7 @@ classes = (
     BLENDINI_PT_info,
     BLENDINI_PT_network,
     BLENDINI_PT_spreadsheet,
+    BLENDINI_PT_shelf,
     BLENDINI_PT_view3d,
     BLENDINI_MT_tab,
 ) + tuple(CATEGORY_MENUS)

@@ -50,6 +50,8 @@ Or step by step:
      spreadsheet.
    - **N** sidebar → **Spreadsheet** tab: Houdini's Geometry Spreadsheet for the *active*
      node (points / vertices / primitives / detail, attributes and groups).
+   - 3D viewport sidebar → *Blendini* tab: a Houdini-style **Create shelf** (Box, Sphere,
+     Tube, Torus, Grid, ... each makes a new geometry object with that SOP inside).
    - Viewport display of point numbers, primitive numbers and normals: the *Blendini* tab of
      the node editor, or the 3D viewport's sidebar.
 5. On a wrangle, click **Edit**. The VEX code opens in a Text Editor, with C-like syntax
