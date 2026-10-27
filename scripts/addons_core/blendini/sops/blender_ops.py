@@ -288,12 +288,26 @@ class ObjectMergeSOP(SOP):
     )
 
     def cook(self, inputs, p, ctx):
-        from ..bl.mesh_io import mesh_to_geo
-        obj = bpy.data.objects.get(p.objpath) if p.objpath else None
-        if obj is None:
-            if p.objpath:
-                raise CookError("Object '%s' not found" % p.objpath)
+        from ..core.geometry import merge
+        import fnmatch
+        patterns = p.objpath.replace(',', ' ').split()
+        if not patterns:
             return Geometry()
+        if len(patterns) == 1 and bpy.data.objects.get(patterns[0]) is not None:
+            return self._read(bpy.data.objects[patterns[0]], p)
+        objs = [o for o in bpy.data.objects if any(fnmatch.fnmatchcase(o.name, pat) for pat in patterns)
+                and not o.name.startswith(('.', '_blendini'))]
+        if not objs:
+            raise CookError("No object matches '%s'" % p.objpath)
+        pieces = []
+        for o in objs:
+            g = self._read(o, p)
+            g.attribs[PRIM_CLASS]['name'] = np.array([o.name] * g.num_prims, dtype=object)
+            pieces.append(g)
+        return merge(pieces)
+
+    def _read(self, obj, p):
+        from ..bl.mesh_io import mesh_to_geo
         # Blender is Z-up, Blendini (like Houdini) is Y-up.
         z_to_y = np.array([[1, 0, 0, 0], [0, 0, 1, 0], [0, -1, 0, 0], [0, 0, 0, 1]], dtype=np.float64)
         matrix = z_to_y @ np.array(obj.matrix_world) if p.xformtype == 'world' else z_to_y
@@ -313,6 +327,9 @@ class ObjectMergeSOP(SOP):
         if obj.type != 'MESH':
             raise CookError("Object '%s' is not a mesh" % obj.name)
         return mesh_to_geo(obj.data, matrix)
+
+
+PRIM_CLASS = 'prim'
 
 
 _MODIFIER_ITEMS = [

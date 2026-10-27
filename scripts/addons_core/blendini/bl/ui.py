@@ -809,6 +809,55 @@ class BLENDINI_OT_export_obj(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class BLENDINI_OT_bake(bpy.types.Operator):
+    """Freeze the active node's geometry into regular Blender objects (independent of the network)"""
+    bl_idname = "blendini.bake"
+    bl_label = "Bake to Blender Objects"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    mode: bpy.props.EnumProperty(name="Mode", items=[
+        ('single', "Single Mesh", "One mesh object"),
+        ('pieces', "One Object per Piece", "Split by the 'name' attribute (or connectivity)"),
+    ])
+
+    @classmethod
+    def poll(cls, context):
+        tree, node = _active_node(context)
+        return node is not None and cook.node_geometry(node) is not None
+
+    def execute(self, context):
+        import numpy as np
+        from mathutils import Matrix
+        from ..core.instances import unpack
+        from ..sops.modify import split_pieces
+        from .mesh_io import geo_to_mesh
+        from .display import ensure_point_display, ensure_material
+        tree, node = _active_node(context)
+        geo = unpack(cook.node_geometry(node))
+        target = tree.target
+        base = Matrix(target.matrix_world) if target is not None else Matrix.Rotation(1.5707963267948966, 4, 'X')
+        coll = bpy.data.collections.new("%s_%s_baked" % (tree.name, node.name))
+        context.scene.collection.children.link(coll)
+        pieces = [geo] if self.mode == 'single' else split_pieces(geo, 'name')
+        for i, piece in enumerate(pieces):
+            c = piece.P.mean(axis=0) if (self.mode == 'pieces' and piece.num_points) else np.zeros(3)
+            local = piece.copy()
+            local.P = local.P - c
+            name = "%s_%s" % (node.name, i) if self.mode == 'pieces' else "%s_baked" % node.name
+            nm = piece.attribs['prim'].get('name')
+            if self.mode == 'pieces' and nm is not None and len(nm):
+                name = str(nm[0])
+            mesh = bpy.data.meshes.new(name)
+            geo_to_mesh(local, mesh)
+            obj = bpy.data.objects.new(name, mesh)
+            obj.matrix_world = base @ Matrix.Translation(tuple(c))
+            coll.objects.link(obj)
+            ensure_point_display(obj)
+            ensure_material(obj)
+        self.report({'INFO'}, "Baked %d object(s) into collection '%s'" % (len(pieces), coll.name))
+        return {'FINISHED'}
+
+
 class BLENDINI_OT_houdini_theme(bpy.types.Operator):
     """Apply a Houdini-like color theme (grey gradient viewport, dark network editor)"""
     bl_idname = "blendini.houdini_theme"
@@ -913,6 +962,9 @@ class BLENDINI_PT_info(bpy.types.Panel):
         if geo is None:
             return
         layout.operator("blendini.export_obj", icon='EXPORT')
+        row = layout.row(align=True)
+        row.operator("blendini.bake", text="Bake Mesh", icon='OBJECT_DATA').mode = 'single'
+        row.operator("blendini.bake", text="Bake Pieces", icon='OUTLINER_OB_GROUP_INSTANCE').mode = 'pieces'
         col = layout.column(align=True)
         col.label(text="Cook time: %.2f ms" % (info.get('time', 0.0) * 1000))
         col.label(text="%d points   %d primitives   %d vertices" % (geo.num_points, geo.num_prims, geo.num_vertices))
@@ -1321,6 +1373,7 @@ classes = (
     BLENDINI_OT_houdini_theme,
     BLENDINI_OT_houdini_layout,
     BLENDINI_OT_export_obj,
+    BLENDINI_OT_bake,
     BLENDINI_OT_tab_menu,
     BLENDINI_OT_add_node,
     BLENDINI_PT_parameters,

@@ -54,7 +54,8 @@ Or step by step:
      shown under each node.
    - **N** sidebar → **Parameters** tab: the parameter pane and the geometry info
      (point and primitive counts, attributes, groups, cook time, `printf` output), plus
-     *Save Geometry to Disk* (.obj).
+     *Save Geometry to Disk* (.obj) and **Bake** (freeze the result as a Blender mesh, or one
+     Blender object per piece).
    - *Blendini* tab → *Apply Houdini-like Theme* for the grey gradient viewport and a dark
      network editor. *Houdini-like Layout* splits the screen into viewport + network +
      spreadsheet.
@@ -93,7 +94,7 @@ Blender is Z-up and Houdini is Y-up. Output objects are rotated 90° around X so
 | Copy      | Copy to Points (orient, N/up, pscale, scale, piece variants, **Pack and Instance**), Pack, Unpack, Assemble, Copy and Transform, Scatter, Points from Volume\* |
 | VEX       | Attribute Wrangle (run over points / prims / vertices / detail / numbers), **Point Wrangle**, Primitive Wrangle, Detail Wrangle, **Attribute VOP** (visual VEX: Globals, Bind, Parameter, math, vector, noise and color VOPs; dive in with I; shows the generated VEX) |
 | Utility   | File (.obj), **Subnetwork** + Subnet Input (dive in with I, up with U), Merge (multi-input), Switch, Null, Output, Sort, Time Shift, **Block Begin / Block End (For-Each pieces or feedback)** |
-| Blender   | Object Merge (meshes and curves), Solidify\*, **Blender Modifier\*** (any modifier, including Geometry Nodes groups) |
+| Blender   | Object Merge (meshes and curves, several objects / wildcards), Solidify\*, **Blender Modifier\*** (any modifier, including Geometry Nodes groups) |
 
 \* These use Blender as the backend. The geometry passes through a real Blender modifier,
 `bmesh` operator, BVH tree, Bullet rigid body world or OpenVDB Geometry Nodes, and comes
