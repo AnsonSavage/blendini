@@ -1914,3 +1914,153 @@ class PointsFromVolumeSOP(SOP):
         out.P = P[inside]
         out.attribs[POINT]['pscale'] = np.full(out.num_points, sep / 2)
         return out
+
+
+@register_sop
+class MatchSizeSOP(SOP):
+    id = 'matchsize'
+    label = "Match Size"
+    category = 'Manipulate'
+    inputs = 1
+    icon = 'FULLSCREEN_EXIT'
+    parms = (
+        Parm('justify_x', "Justify X", 'enum', items=[('center', "Center", ""), ('min', "Min", ""), ('max', "Max", ""), ('none', "None", "")]),
+        Parm('justify_y', "Justify Y", 'enum', items=[('min', "Min (on the ground)", ""), ('center', "Center", ""), ('max', "Max", ""), ('none', "None", "")]),
+        Parm('justify_z', "Justify Z", 'enum', items=[('center', "Center", ""), ('min', "Min", ""), ('max', "Max", ""), ('none', "None", "")]),
+        Parm('t', "Target Position", 'vector'),
+        Parm('doscale', "Scale to Fit", 'bool', default=False),
+        Parm('size', "Target Size", 'float', default=1.0, min=0.0001, hide_when={'doscale': False}),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs).copy()
+        if geo.num_points == 0:
+            return geo
+        lo, hi = geo.bbox()
+        s = 1.0
+        if p.doscale:
+            s = p.size / max(float((hi - lo).max()), 1e-12)
+        P = (geo.P - (lo + hi) / 2) * s + (lo + hi) / 2
+        lo, hi = (lo - (lo + hi) / 2) * s + (lo + hi) / 2, (hi - (lo + hi) / 2) * s + (lo + hi) / 2
+        offset = np.zeros(3)
+        for k, j in enumerate((p.justify_x, p.justify_y, p.justify_z)):
+            anchor = {'center': (lo[k] + hi[k]) / 2, 'min': lo[k], 'max': hi[k]}.get(j)
+            if anchor is not None:
+                offset[k] = p.t[k] - anchor
+        geo.P = P + offset
+        return geo
+
+
+@register_sop
+class NameSOP(SOP):
+    id = 'name'
+    label = "Name"
+    category = 'Attribute'
+    inputs = 1
+    icon = 'SORTALPHA'
+    parms = (
+        Parm('prefix', "Name Prefix", 'string', default='piece'),
+        Parm('attrib', "Attribute", 'string', default='name'),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = cook_connectivity(_in(inputs))
+        cls = geo.attribs[PRIM].pop('__class')
+        geo.attribs[PRIM][p.attrib or 'name'] = np.array(["%s%d" % (p.prefix, c) for c in cls], dtype=object)
+        return geo
+
+
+def cook_connectivity(geo):
+    from . import cook_sop
+    return cook_sop('connectivity', [geo], attribname='__class', connecttype='prim')
+
+
+@register_sop
+class AttribCopySOP(SOP):
+    id = 'attribcopy'
+    label = "Attribute Copy"
+    category = 'Attribute'
+    inputs = 2
+    input_labels = ("Destination", "Source")
+    icon = 'DUPLICATE'
+    parms = (
+        Parm('attribname', "Attribute Names", 'string', default='Cd', description="Space separated, wildcards allowed"),
+        Parm('class', "Attribute Class", 'enum', items=CLASS_ALL),
+    )
+
+    def cook(self, inputs, p, ctx):
+        import fnmatch
+        dst = _in(inputs, 0).copy()
+        src = _in(inputs, 1)
+        cls = p['class']
+        n = dst.count(cls)
+        for name, arr in src.attribs[cls].items():
+            if name == 'P' or not any(fnmatch.fnmatchcase(name, pat) for pat in p.attribname.split()):
+                continue
+            out = dst.attribs[cls].get(name)
+            if out is None or out.shape[1:] != arr.shape[1:] or out.dtype != arr.dtype:
+                out = np.zeros((n,) + arr.shape[1:], dtype=arr.dtype)
+                if arr.dtype == object:
+                    out[...] = ''
+            else:
+                out = out.copy()
+            m = min(n, len(arr))
+            out[:m] = arr[:m]
+            dst.attribs[cls][name] = out
+        return dst
+
+
+@register_sop
+class PackSOP(SOP):
+    id = 'pack'
+    label = "Pack"
+    category = 'Copy'
+    inputs = 1
+    icon = 'PACKAGE'
+    description = "Pack each piece (by name attribute or connectivity) into a packed point at its centroid"
+    parms = (Parm('nameattrib', "Name Attribute", 'string', default='name'),)
+
+    def cook(self, inputs, p, ctx):
+        from ..core.instances import pack
+        geo = _in(inputs)
+        pieces = split_pieces(geo, p.nameattrib.strip())
+        if not pieces:
+            return Geometry()
+        centers = []
+        locals_ = []
+        names = []
+        for i, piece in enumerate(pieces):
+            c = piece.P.mean(axis=0) if piece.num_points else np.zeros(3)
+            loc = piece.copy()
+            loc.P = loc.P - c
+            centers.append(c)
+            locals_.append(loc)
+            nm = piece.attribs[PRIM].get(p.nameattrib)
+            names.append(str(nm[0]) if nm is not None and len(nm) else "piece%d" % i)
+        out = Geometry()
+        out.P = np.array(centers)
+        out.instances = locals_
+        out.attribs[POINT]['__inst'] = np.arange(len(pieces), dtype=np.int64)
+        from ..core.instances import set_instance_matrices
+        set_instance_matrices(out, np.broadcast_to(np.eye(3), (len(pieces), 3, 3)).copy())
+        out.attribs[POINT]['name'] = np.array(names, dtype=object)
+        return out
+
+
+@register_sop
+class AssembleSOP(SOP):
+    id = 'assemble'
+    label = "Assemble"
+    category = 'Copy'
+    inputs = 1
+    icon = 'MOD_BUILD'
+    description = "Name connected pieces and optionally pack them (the usual step after a fracture)"
+    parms = (
+        Parm('prefix', "Name Prefix", 'string', default='piece'),
+        Parm('pack', "Create Packed Geometry", 'bool', default=False),
+    )
+
+    def cook(self, inputs, p, ctx):
+        from . import cook_sop
+        named = cook_sop('name', [_in(inputs)], prefix=p.prefix)
+        return cook_sop('pack', [named]) if p.pack else named
