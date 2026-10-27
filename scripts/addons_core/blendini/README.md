@@ -15,7 +15,8 @@ also plain Python + numpy, so it can be zipped and installed into a stock Blende
 1. Enable **Blendini** in *Preferences → Add-ons*.
 2. In the 3D viewport choose *Add → Blendini Geometry*. This creates `geo1` (an object
    plus its SOP network, like `/obj/geo1`) and opens the network in a node editor.
-3. Or use *Add → Blendini Examples* to build seven example networks.
+3. Or use *Add → Blendini Examples* to build eight example networks: ripple, scatter and
+   copy, plexus, city, particles, for-each, L-system tree and spiral.
 4. In the node editor:
    - **Tab**: Houdini-style TAB menu (start typing to search).
    - **R**: set the display flag on the active node.
@@ -23,7 +24,10 @@ also plain Python + numpy, so it can be zipped and installed into a stock Blende
    - **N** sidebar → **Parameters** tab: the parameter pane and the geometry info
      (point and primitive counts, attributes, groups, cook time, `printf` output).
    - *Blendini* tab → *Apply Houdini-like Theme* for the grey gradient viewport and a dark
-     network editor.
+     network editor. *Houdini-like Layout* splits the screen into viewport + network +
+     spreadsheet.
+   - Viewport display of point numbers, primitive numbers and normals: the *Blendini* tab of
+     the node editor, or the 3D viewport's sidebar.
 5. On a wrangle, click **Edit**. The VEX code opens in a Text Editor, with C-like syntax
    highlighting, and the network **recooks live as you type**. The **+** button creates
    spare parameters for every `ch("name")` call, like Houdini's "create spare parameters"
@@ -36,10 +40,10 @@ Blender is Z-up and Houdini is Y-up. Output objects are rotated 90° around X so
 
 | Category  | SOPs |
 |-----------|------|
-| Primitive | Box, Grid, Sphere (UV / icosahedron), Tube, Torus, Circle, Line, Platonic Solids, Bound, Font\* |
+| Primitive | Box, Grid, Sphere (UV / icosahedron), Tube, Torus, Circle, Line, Platonic Solids, Bound, Font\*, L-System |
 | Manipulate| Transform, Mountain, Point Jitter, Peak, Smooth, Ray\* |
-| Polygon   | Add, Fuse, Facet, Divide, Reverse, PolyExtrude, PolyWire, Resample, Subdivide\*, PolyBevel\*, Boolean\*, Remesh\*, PolyReduce\*, Clip\* |
-| Attribute | Attribute Create / Delete / Rename / Promote / Randomize / Noise / Transfer, Color, Normal, Connectivity, Measure, UV Texture |
+| Polygon   | Add, Fuse, Facet, Divide, Reverse, PolyExtrude, PolyWire, Sweep, Resample, Subdivide\*, PolyBevel\*, Boolean\*, Remesh\*, PolyReduce\*, Clip\* |
+| Attribute | Attribute Create / Delete / Rename / Promote / Randomize / Noise / Transfer, Color, Normal, Connectivity, Measure, UV Texture, PolyFrame |
 | Group     | Group Create (pattern / bounding box / normal / random / `@expression`), Blast |
 | Copy      | Copy to Points (orient, N/up, pscale, scale), Copy and Transform, Scatter |
 | VEX       | Attribute Wrangle, **Point Wrangle**, Primitive Wrangle, Detail Wrangle, **Solver (VEX)** |
@@ -138,6 +142,12 @@ Run the tests (no Blender required, only numpy):
 cd scripts/addons_core
 python -m unittest blendini.tests.test_blendini
 ```
+
+## Security
+
+Opening a .blend file with Blendini networks never runs Python from the file. VEX is
+interpreted by Blendini itself and can only read and write geometry. That's also why
+there is no Python SOP.
 
 ## Not done yet (ideas)
 

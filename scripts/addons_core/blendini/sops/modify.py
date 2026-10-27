@@ -1420,3 +1420,155 @@ def split_pieces(geo, attrib, elemtype='prim'):
 def REGISTRY_COOK(sop_id, geo, **parms):
     from . import cook_sop
     return cook_sop(sop_id, [geo], **parms)
+
+
+# ----------------------------------------------------------------------------
+# Curves
+
+
+def curve_frames(P, closed=False, up_hint=(0.0, 1.0, 0.0)):
+    """Rotation minimizing frames along a polyline. Returns (tangent, normal, binormal), each (n, 3)."""
+    n = len(P)
+    if n < 2:
+        z = np.zeros((n, 3))
+        return z + (0, 0, 1), z + (0, 1, 0), z + (1, 0, 0)
+    if closed:
+        T = np.roll(P, -1, axis=0) - np.roll(P, 1, axis=0)
+    else:
+        T = np.empty_like(P)
+        T[1:-1] = P[2:] - P[:-2]
+        T[0] = P[1] - P[0]
+        T[-1] = P[-1] - P[-2]
+    T /= np.maximum(np.linalg.norm(T, axis=1, keepdims=True), 1e-12)
+    up = np.asarray(up_hint, dtype=np.float64)
+    N = np.zeros_like(P)
+    first = np.cross(np.cross(T[0], up), T[0])
+    if np.linalg.norm(first) < 1e-6:
+        first = np.cross(np.cross(T[0], [1.0, 0.0, 0.0]), T[0])
+    N[0] = first / np.linalg.norm(first)
+    for i in range(1, n):
+        # Double reflection method (Wang et al.) simplified: project previous normal.
+        v = N[i - 1] - T[i] * np.dot(N[i - 1], T[i])
+        ln = np.linalg.norm(v)
+        N[i] = v / ln if ln > 1e-12 else N[i - 1]
+    B = np.cross(T, N)
+    return T, N, B
+
+
+@register_sop
+class PolyFrameSOP(SOP):
+    id = 'polyframe'
+    label = "PolyFrame"
+    category = 'Attribute'
+    inputs = 1
+    icon = 'ORIENTATION_GIMBAL'
+    parms = (
+        Parm('tangentname', "Tangent Name", 'string', default='tangentu'),
+        Parm('normalname', "Normal Name", 'string', default='N'),
+        Parm('bitangentname', "Bitangent Name", 'string', default='tangentv'),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs).copy()
+        T = np.zeros((geo.num_points, 3))
+        N = np.zeros((geo.num_points, 3))
+        B = np.zeros((geo.num_points, 3))
+        for i in range(geo.num_prims):
+            pts = geo.prim_points(i)
+            t, nrm, b = curve_frames(geo.P[pts], bool(geo.prim_closed[i]))
+            T[pts], N[pts], B[pts] = t, nrm, b
+        for name, arr in ((p.tangentname, T), (p.normalname, N), (p.bitangentname, B)):
+            if name.strip():
+                geo.attribs[POINT][name.strip()] = arr
+        return geo
+
+
+@register_sop
+class SweepSOP(SOP):
+    id = 'sweep'
+    label = "Sweep"
+    category = 'Polygon'
+    inputs = 2
+    input_labels = ("Backbone Curves", "Cross Section")
+    icon = 'CURVE_BEZCURVE'
+    parms = (
+        Parm('surfaceshape', "Surface Shape", 'enum', items=[
+            ('tube', "Round Tube", ""), ('square', "Square Tube", ""), ('ribbon', "Ribbon", ""),
+            ('input', "Second Input Cross Sections", ""),
+        ]),
+        Parm('radius', "Radius / Width", 'float', default=0.1, min=0, soft_max=2),
+        Parm('cols', "Columns", 'int', default=8, min=2, max=128, hide_when={'surfaceshape': ('square', 'ribbon', 'input')}),
+        Parm('scaleramp', "Taper (end scale)", 'float', default=1.0, min=0, soft_max=2),
+        Parm('twist', "Twist (degrees)", 'float', default=0.0),
+        Parm('usepscale', "Scale by pscale", 'bool', default=True),
+        Parm('endcaps', "End Caps", 'bool', default=True),
+    )
+
+    def _section(self, p, inputs):
+        if p.surfaceshape == 'tube':
+            k = max(p.cols, 3)
+            a = 2 * np.pi * np.arange(k) / k
+            return np.stack([np.cos(a), np.sin(a)], axis=1), True
+        if p.surfaceshape == 'square':
+            return np.array([[1, 1], [-1, 1], [-1, -1], [1, -1]], dtype=np.float64), True
+        if p.surfaceshape == 'ribbon':
+            return np.array([[-1, 0], [1, 0]], dtype=np.float64), False
+        prof = _in(inputs, 1)
+        if prof.num_points < 2:
+            raise CookError("Sweep: the second input needs a cross section curve")
+        pts = prof.prim_points(0) if prof.num_prims else np.arange(prof.num_points)
+        P = prof.P[pts]
+        closed = bool(prof.prim_closed[0]) if prof.num_prims else False
+        # Cross sections are drawn in the XY plane (like Houdini).
+        return P[:, :2] / max(p.radius, 1e-9), closed
+
+    def cook(self, inputs, p, ctx):
+        curves = _in(inputs, 0)
+        section, sec_closed = self._section(p, inputs)
+        k = len(section)
+        pscale = curves.attribs[POINT].get('pscale')
+        allP = []
+        quads = []
+        caps = []
+        offset = 0
+        u_attr = []
+        for ci in range(curves.num_prims):
+            pts = curves.prim_points(ci)
+            n = len(pts)
+            if n < 2:
+                continue
+            closed = bool(curves.prim_closed[ci])
+            T, N, B = curve_frames(curves.P[pts], closed)
+            t = np.linspace(0, 1, n)
+            scale = p.radius * (1 + (p.scaleramp - 1) * t)
+            if p.usepscale and pscale is not None:
+                scale = scale * pscale[pts]
+            ang = np.radians(p.twist) * t
+            c, s = np.cos(ang)[:, None], np.sin(ang)[:, None]
+            Nn = N * c + B * s
+            Bn = -N * s + B * c
+            ring = (curves.P[pts][:, None, :]
+                    + (section[None, :, 0:1] * Nn[:, None, :] + section[None, :, 1:2] * Bn[:, None, :])
+                    * scale[:, None, None])
+            allP.append(ring.reshape(-1, 3))
+            u_attr.append(np.repeat(t, k))
+            rows = n if closed else n - 1
+            cols = k if sec_closed else k - 1
+            for r in range(rows):
+                r1 = (r + 1) % n
+                for j in range(cols):
+                    j1 = (j + 1) % k
+                    quads.append([offset + r * k + j, offset + r * k + j1, offset + r1 * k + j1, offset + r1 * k + j])
+            if p.endcaps and sec_closed and not closed:
+                caps.append([offset + j for j in range(k)][::-1])
+                caps.append([offset + (n - 1) * k + j for j in range(k)])
+            offset += n * k
+        out = Geometry()
+        if not allP:
+            return out
+        out.P = np.concatenate(allP)
+        out.add_prims(quads)
+        if caps:
+            out.add_prims(caps)
+        out.attribs[POINT]['curveu'] = np.concatenate(u_attr)
+        return out

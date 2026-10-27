@@ -410,3 +410,110 @@ class AddSOP(SOP):
         if p.connect != 'none' and geo.num_points > 1:
             geo.add_prims([list(range(geo.num_points))], closed=(p.connect == 'closed'))
         return geo
+
+
+def _rotate_about(v, axis, ang):
+    axis = axis / np.linalg.norm(axis)
+    return v * np.cos(ang) + np.cross(axis, v) * np.sin(ang) + axis * np.dot(axis, v) * (1 - np.cos(ang))
+
+
+@register_sop
+class LSystemSOP(SOP):
+    id = 'lsystem'
+    label = "L-System"
+    category = 'Primitive'
+    icon = 'OUTLINER_OB_POINTCLOUD'
+    parms = (
+        Parm('generations', "Generations", 'int', default=4, min=0, max=10),
+        Parm('stepsize', "Step Size", 'float', default=0.2, min=0, soft_max=2),
+        Parm('stepscale', "Step Size Scale", 'float', default=0.9, min=0, soft_max=2),
+        Parm('angle', "Angle", 'float', default=28.0, soft_min=0, soft_max=180),
+        Parm('width', "Thickness", 'float', default=0.04, min=0, soft_max=1),
+        Parm('widthscale', "Thickness Scale", 'float', default=0.7, min=0, soft_max=2),
+        Parm('seed', "Random Seed", 'int', default=0),
+        Parm('randangle', "Angle Variance", 'float', default=0.0, min=0, soft_max=45),
+        Parm('premise', "Premise", 'string', default='FFFA'),
+        Parm('rule1', "Rule 1", 'string', default='A=!"[B]////[B]////B'),
+        Parm('rule2', "Rule 2", 'string', default='B=&FFFA'),
+        Parm('rule3', "Rule 3", 'string', default=''),
+        Parm('rule4', "Rule 4", 'string', default=''),
+    )
+
+    def cook(self, inputs, p, ctx):
+        rules = {}
+        for r in (p.rule1, p.rule2, p.rule3, p.rule4):
+            if '=' in r:
+                k, v = r.split('=', 1)
+                k = k.strip()
+                if k:
+                    rules[k[0]] = v.strip()
+        s = p.premise
+        for _ in range(max(p.generations, 0)):
+            s = ''.join(rules.get(c, c) for c in s)
+            if len(s) > 2_000_000:
+                break
+        rng = np.random.RandomState(p.seed & 0x7FFFFFFF)
+        ang = np.radians(p.angle)
+        pos = np.zeros(3)
+        H = np.array([0.0, 1.0, 0.0])
+        L = np.array([-1.0, 0.0, 0.0])
+        U = np.array([0.0, 0.0, 1.0])
+        step = p.stepsize
+        width = p.width
+        points = [pos.copy()]
+        widths = [width]
+        cur_pt = 0
+        polys = []
+        current = [0]
+        stack = []
+
+        def jitter():
+            return np.radians(rng.uniform(-p.randangle, p.randangle)) if p.randangle else 0.0
+        for c in s:
+            if c in 'FG':
+                pos = pos + H * step
+                points.append(pos.copy())
+                widths.append(width)
+                cur_pt = len(points) - 1
+                current.append(cur_pt)
+            elif c in 'fg':
+                pos = pos + H * step
+                if len(current) > 1:
+                    polys.append(current)
+                points.append(pos.copy())
+                widths.append(width)
+                cur_pt = len(points) - 1
+                current = [cur_pt]
+            elif c in '+-':
+                a = (ang if c == '+' else -ang) + jitter()
+                H, L = _rotate_about(H, U, a), _rotate_about(L, U, a)
+            elif c in '&^':
+                a = (ang if c == '&' else -ang) + jitter()
+                H, U = _rotate_about(H, L, a), _rotate_about(U, L, a)
+            elif c in '\\/':
+                a = (ang if c == '\\' else -ang) + jitter()
+                L, U = _rotate_about(L, H, a), _rotate_about(U, H, a)
+            elif c == '|':
+                H, L = -H, -L
+            elif c == '"':
+                step *= p.stepscale
+            elif c == '!':
+                width *= p.widthscale
+            elif c == '[':
+                stack.append((pos.copy(), H.copy(), L.copy(), U.copy(), step, width, cur_pt, current))
+                current = [cur_pt]
+            elif c == ']':
+                if len(current) > 1:
+                    polys.append(current)
+                if stack:
+                    pos, H, L, U, step, width, cur_pt, current = stack.pop()
+        if len(current) > 1:
+            polys.append(current)
+        geo = Geometry.from_polys(np.array(points))
+        geo.add_prims(polys, closed=False)
+        geo.attribs['point']['width'] = np.array(widths)
+        geo.attribs['point']['pscale'] = np.array(widths) / max(p.width, 1e-9)
+        # Remove points not used by any branch.
+        if polys:
+            geo.delete_unused_points()
+        return geo

@@ -207,6 +207,14 @@ def build_examples():
     _finish(t, end)
     trees.append(t)
 
+    t = _new_tree("lsystem_tree", (70, 0, 0))
+    ls = _node(t, 'lsystem', (0, 400), generations=7, stepsize=0.35, angle=26.0, randangle=6.0)
+    sw = _node(t, 'sweep', (0, 200), radius=0.06, cols=6)
+    col = _node(t, 'pointwrangle', (0, 0), snippet='@Cd = lerp({0.35, 0.22, 0.1}, {0.3, 0.7, 0.2}, pow(f@curveu, 3));')
+    _chain(t, [ls, sw, col])
+    _finish(t, col)
+    trees.append(t)
+
     t = _new_tree("spiral", (50, 0, 0))
     w = _node(t, 'detailwrangle', (0, 200), snippet=SPIRAL)
     _spare(w, count=200, turns=4.0)
