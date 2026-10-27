@@ -443,7 +443,7 @@ class Parser:
             a = self.parse_assign()
             self.expect(':')
             b = self.parse_assign()
-            return Node('ternary', cond.line, cond=cond, a=a, b=b)
+            return Node('ternary', cond.line, cond=cond, yes=a, no=b)
         return cond
 
     def parse_binary(self, level):

@@ -250,8 +250,8 @@ class Interpreter:
             return old if node.post else new
         if k == 'ternary':
             c = truthy(self.ev(node.cond, mask))
-            a = self.ev(node.a, mask & c, hint)
-            b = self.ev(node.b, mask & ~c, hint)
+            a = self.ev(node.yes, mask & c, hint)
+            b = self.ev(node.no, mask & ~c, hint)
             t = _promote(a.t, b.t) if a.t != b.t else a.t
             a = convert(a, t)
             b = convert(b, t)
