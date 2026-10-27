@@ -36,7 +36,8 @@ Or step by step:
 3. Or use *Add → Blendini Examples* to build eight example networks: ripple, scatter and
    copy, plexus, city, particles, for-each, L-system tree and spiral.
 4. In the node editor:
-   - **Tab**: Houdini-style TAB menu (start typing to search).
+   - **Tab**: Houdini-style TAB menu (start typing to search). With a node selected, the new
+     node is wired to its output and takes over the display flag, like Houdini.
    - **R**: set the display flag on the active node.
    - **M**: bypass (Blender's mute, shown as a pass-through).
    - Each node has **display**, **template** (ghosted wireframe guide) and **bypass** flag

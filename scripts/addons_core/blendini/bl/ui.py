@@ -930,15 +930,50 @@ class BLENDINI_PT_view3d(bpy.types.Panel):
 # Menus
 
 
+class BLENDINI_OT_add_node(bpy.types.Operator):
+    """Add a SOP. Like Houdini, it is wired to the selected node and takes over its display flag"""
+    bl_idname = "blendini.add_node"
+    bl_label = "Add SOP"
+    bl_options = {'REGISTER', 'UNDO'}
+    type: StringProperty()
+
+    @classmethod
+    def poll(cls, context):
+        return _in_blendini_tree(context) and context.space_data.edit_tree is not None
+
+    def invoke(self, context, event):
+        tree = context.space_data.edit_tree
+        prev = tree.nodes.active
+        if prev is not None and (not prev.select or not isinstance(prev, BlendiniNodeBase) or not prev.outputs):
+            prev = None
+        result = bpy.ops.node.add_node('INVOKE_DEFAULT', type=self.type, use_transform=True)
+        if 'CANCELLED' in result:
+            return {'CANCELLED'}
+        new = tree.nodes.active
+        if prev is not None and new is not None and new != prev and isinstance(new, BlendiniNodeBase):
+            if new.inputs:
+                # Insert after prev: re-wire prev's downstream links through the new node.
+                downstream = [(l.to_socket) for l in prev.outputs[0].links]
+                tree.links.new(prev.outputs[0], new.inputs[0])
+                for sock in downstream:
+                    if sock.node != new:
+                        tree.links.new(new.outputs[0], sock)
+            if prev.display_flag and new.inputs:
+                for n in tree.nodes:
+                    if isinstance(n, BlendiniNodeBase):
+                        n.display_flag = (n == new)
+            cook.request_cook(tree)
+        return {'FINISHED'}
+
+
 def _category_menu_class(category):
     def draw(self, context):
         layout = self.layout
         layout.operator_context = 'INVOKE_REGION_WIN'
         for sop_id, sop in sorted(REGISTRY.items(), key=lambda kv: kv[1].label):
             if sop.category == category:
-                op = layout.operator("node.add_node", text=sop.label, icon=sop.icon if sop.icon != 'NONE' else 'NODE')
+                op = layout.operator("blendini.add_node", text=sop.label, icon=sop.icon if sop.icon != 'NONE' else 'NODE')
                 op.type = NODE_PREFIX + sop_id
-                op.use_transform = True
     return type("BLENDINI_MT_add_" + category.lower(), (bpy.types.Menu,), {
         'bl_idname': "BLENDINI_MT_add_" + category.lower(),
         'bl_label': category,
@@ -1084,6 +1119,7 @@ classes = (
     BLENDINI_OT_houdini_layout,
     BLENDINI_OT_export_obj,
     BLENDINI_OT_tab_menu,
+    BLENDINI_OT_add_node,
     BLENDINI_PT_parameters,
     BLENDINI_PT_info,
     BLENDINI_PT_network,
