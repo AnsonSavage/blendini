@@ -499,7 +499,12 @@ class Interpreter:
         if impl is None:
             raise VexError("Line %d: unknown function '%s'" % (node.line, name))
         args = [self.ev(a, mask) for a in node.args]
-        result = impl(self, args, mask, hint)
+        try:
+            result = impl(self, args, mask, hint)
+        except IndexError:
+            if any(len(a.d) == 0 for a in args):
+                raise
+            raise VexError("Line %d: wrong number of arguments to %s()" % (node.line, name)) from None
         if name in _builtins.INPLACE:
             # Functions like append() / rotate() modify their first argument.
             new_val, result = result

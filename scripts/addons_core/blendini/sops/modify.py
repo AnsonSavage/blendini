@@ -1739,3 +1739,90 @@ class EditSOP(SOP):
         P[idx[ok]] += d[ok] * p.blend
         geo.P = P
         return geo
+
+
+@register_sop
+class CleanSOP(SOP):
+    id = 'clean'
+    label = "Clean"
+    category = 'Polygon'
+    inputs = 1
+    icon = 'BRUSH_DATA'
+    parms = (
+        Parm('fusepts', "Consolidate Points", 'bool', default=False),
+        Parm('dist', "Distance", 'float', default=0.001, min=0, hide_when={'fusepts': False}),
+        Parm('deldegen', "Remove Degenerate Primitives", 'bool', default=True),
+        Parm('delunused', "Remove Unused Points", 'bool', default=True),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs).copy()
+        if p.fusepts:
+            fuse_points(geo, p.dist)
+        elif p.deldegen:
+            _remove_degenerate(geo)
+        if p.delunused and geo.num_prims:
+            geo.delete_unused_points()
+        return geo
+
+
+@register_sop
+class EndsSOP(SOP):
+    id = 'ends'
+    label = "Ends"
+    category = 'Polygon'
+    inputs = 1
+    icon = 'IPO_CONSTANT'
+    parms = (
+        Parm('group', "Group", 'string'),
+        Parm('closeu', "Close U", 'enum', items=[('none', "No Change", ""), ('close', "Close Straight", ""),
+                                                 ('open', "Open", ""), ('unroll', "Unroll", "")]),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs).copy()
+        sel = parse_group_pattern(geo, PRIM, p.group)
+        if p.closeu == 'close':
+            geo.prim_closed[sel & (geo.prim_sizes() >= 3)] = True
+        elif p.closeu == 'open':
+            geo.prim_closed[sel] = False
+        elif p.closeu == 'unroll':
+            # Open closed polygons and repeat the first point at the end.
+            polys = geo.prims_as_lists()
+            target = np.nonzero(sel & geo.prim_closed)[0]
+            for i in target:
+                polys[i] = polys[i] + polys[i][:1]
+            vtx = geo.attribs[VERTEX]
+            geo.attribs[VERTEX] = {}
+            closed = geo.prim_closed.copy()
+            closed[target] = False
+            sizes = np.array([len(x) for x in polys], dtype=np.int64)
+            geo.prim_start = np.concatenate([[0], np.cumsum(sizes)]).astype(np.int64)
+            geo.vtx_point = np.array([v for x in polys for v in x], dtype=np.int64)
+            geo.prim_closed = closed
+            del vtx
+        return geo
+
+
+@register_sop
+class TrailSOP(SOP):
+    id = 'trail'
+    label = "Trail"
+    category = 'Attribute'
+    inputs = 1
+    icon = 'TRACKING'
+    time_dependent = True
+    description = "Compute point velocity from the previous frame (also writes Blender's 'velocity' for motion blur)"
+    parms = (
+        Parm('velscale', "Velocity Scale", 'float', default=1.0),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs, 0).copy()
+        prev = getattr(ctx, 'previous_input', None)
+        v = np.zeros((geo.num_points, 3))
+        if prev is not None and prev.num_points == geo.num_points:
+            v = (geo.P - prev.P) * ctx.fps * p.velscale
+        geo.attribs[POINT]['v'] = v
+        geo.attribs[POINT]['velocity'] = v
+        return geo

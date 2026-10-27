@@ -113,7 +113,12 @@ class WrangleContext:
         if name in ('numvtx',):
             return const('int', geo.num_vertices)
         if name == 'numelem':
-            return const('int', geo.count(cls))
+            return const('int', len(elems) if getattr(self, 'numbers', False) else geo.count(cls))
+        if getattr(self, 'numbers', False) and name not in ('Time', 'Frame', 'TimeInc'):
+            darr = geo.attribs[DETAIL].get(name)
+            if darr is not None and len(darr):
+                return V(type_of_array(darr), np.repeat(darr[:1], n, axis=0))
+            return zeros(t, n)
         if name == 'Time':
             return const('float', self.time)
         if name == 'Frame':
@@ -352,12 +357,23 @@ def _rebuild(geo, polys):
     del vtx_attribs
 
 
-def run_wrangle(code, inputs, run_over=POINT, group=None, channels=None, ramps=None, time=0.0, frame=1.0, fps=24.0):
+def run_wrangle(code, inputs, run_over=POINT, group=None, channels=None, ramps=None, time=0.0, frame=1.0, fps=24.0,
+                count=10):
     """Execute VEX code. Returns (geometry, messages)."""
     prog = compile_cached(code)
     geo = inputs[0] if inputs and inputs[0] is not None else Geometry()
     inputs = list(inputs) + [None] * (4 - len(inputs))
     inputs[0] = geo
+    if run_over == 'numbers':
+        # Like Houdini's "Run Over: Numbers": @elemnum goes 0..count-1, writes go to detail.
+        elems = np.arange(max(int(count), 0))
+        if len(elems) == 0:
+            return geo.copy(), []
+        ctx = WrangleContext(inputs, DETAIL, elems, channels, ramps, time, frame, fps)
+        ctx.numbers = True
+        interp = Interpreter(prog, ctx, len(elems))
+        interp.run()
+        return ctx.finalize(interp), ctx.messages
     if run_over == DETAIL:
         elems = np.zeros(1, dtype=np.int64)
     else:

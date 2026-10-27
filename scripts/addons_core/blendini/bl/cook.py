@@ -223,6 +223,14 @@ def cook_node(node, ctx_base, visiting=None):
         ctx.ramps = ramps
         if sop.id == 'edit':
             ctx.edit_deltas = node.edit_deltas()
+        if sop.id == 'trail':
+            ups = _input_nodes(node.inputs[0])
+            if ups:
+                f = ctx_base['frame'] - 1
+                prev_ctx = dict(ctx_base, frame=f, time=float(f - 1) / ctx_base['fps'])
+                ctx.previous_input, _ps = cook_node(ups[0], prev_ctx, visiting)
+                # Re-cook at the current frame so the cache holds the current result upstream.
+                cook_node(ups[0], ctx_base, visiting)
         t0 = time.perf_counter()
         error = None
         try:

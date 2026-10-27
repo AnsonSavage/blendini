@@ -13,7 +13,8 @@ from ..core.geometry import Geometry, POINT, PRIM, VERTEX, DETAIL
 from ..core import noise as _noise
 
 CLASS_ITEMS = [('point', "Points", ""), ('prim', "Primitives", ""), ('vertex', "Vertices", ""), ('detail', "Detail", "")]
-RUN_OVER_ITEMS = [('point', "Points", ""), ('prim', "Primitives", ""), ('vertex', "Vertices", ""), ('detail', "Detail (only once)", "")]
+RUN_OVER_ITEMS = [('point', "Points", ""), ('prim', "Primitives", ""), ('vertex', "Vertices", ""),
+                  ('detail', "Detail (only once)", ""), ('numbers', "Numbers", "Run a fixed number of times")]
 
 
 def _in(inputs, i=0):
@@ -317,6 +318,7 @@ class _WrangleBase(SOP):
             Parm('group', "Group", 'string'),
             Parm('class', "Run Over", 'enum', items=RUN_OVER_ITEMS, default=cls.default_class),
             Parm('snippet', "VEXpression", 'code', default=cls.default_code, description=WRANGLE_HELP),
+            Parm('numcount', "Number Count", 'int', default=10, min=0, hide_when={'class': ('point', 'prim', 'vertex', 'detail')}),
         )
 
     def cook(self, inputs, p, ctx):
@@ -328,7 +330,7 @@ class _WrangleBase(SOP):
             inputs[0] = Geometry()
         try:
             geo, messages = run_wrangle(
-                p.snippet, inputs, run_over=p['class'], group=p.group.strip() or None,
+                p.snippet, inputs, run_over=p['class'], group=p.group.strip() or None, count=p.get('numcount', 10),
                 channels=getattr(ctx, 'channels', None), ramps=getattr(ctx, 'ramps', None),
                 time=ctx.time, frame=ctx.frame, fps=ctx.fps,
             )
