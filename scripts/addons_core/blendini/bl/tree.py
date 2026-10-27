@@ -156,6 +156,9 @@ class BlendiniNodeBase:
         self.display_flag = False
         self.template_flag = False
         if self.text is not None:
+            # The copy gets its own code: take the current text, then unlink the shared Text.
+            if hasattr(self, 'p_snippet'):
+                self.p_snippet = self.text.as_string()
             self.text = None
 
     def free(self):
