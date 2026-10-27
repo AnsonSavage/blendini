@@ -65,6 +65,11 @@ def is_cooking():
 
 
 def request_cook(tree):
+    # Edits inside a subnetwork recook the network that contains it.
+    depth = 0
+    while tree is not None and getattr(tree, 'owner_tree', None) is not None and depth < 32:
+        tree = tree.owner_tree
+        depth += 1
     if tree is None or not getattr(tree, 'auto_cook', True):
         return
     if bpy.app.background:
@@ -149,6 +154,17 @@ def cook_node(node, ctx_base, visiting=None):
         sop = node.sop
         if sop.id == 'foreach_end' and not node.mute:
             return _cook_foreach(node, ctx_base, visiting)
+        if sop.id == 'subnet' and not node.mute and node.subtree is not None:
+            return _cook_subnet(node, ctx_base, visiting)
+        if sop.id == 'subinput':
+            sub = ctx_base.get('subnet_inputs')
+            idx = node.p_input - 1
+            if sub is not None and 0 <= idx < len(sub[0]) and sub[0][idx] is not None:
+                geo, s = sub[0][idx], sub[1][idx]
+            else:
+                geo, s = Geometry(), None
+            _cache[key] = {'sig': s, 'geo': geo, 'time': 0.0, 'messages': [], 'error': None}
+            return geo, ('subinput', idx, s)
         if sop.id == 'foreach_begin':
             current = ctx_base.get('foreach', {}).get(node.name)
             if current is not None:
@@ -227,6 +243,31 @@ def cook_node(node, ctx_base, visiting=None):
         return geo, sig
     finally:
         visiting.discard(key)
+
+
+def _cook_subnet(node, ctx_base, visiting):
+    inputs, sigs = [], []
+    for sock in node.inputs:
+        ups = _input_nodes(sock)
+        if ups:
+            g, s = cook_node(ups[0], ctx_base, visiting)
+        else:
+            g, s = None, None
+        inputs.append(g)
+        sigs.append(s)
+    inner = node.subtree
+    out = display_node(inner)
+    if out is None:
+        return Geometry(), ('subnet-empty',)
+    ctx2 = dict(ctx_base)
+    ctx2['subnet_inputs'] = (inputs, sigs)
+    ctx2['loopsig'] = (ctx_base.get('loopsig'), 'subnet', node.name, tuple(sigs))
+    geo, sig = cook_node(out, ctx2, visiting)
+    key = _node_key(node)
+    inner_info = _cache.get(_node_key(out), {})
+    _cache[key] = {'sig': sig, 'geo': geo, 'time': inner_info.get('time', 0.0), 'messages': [],
+                   'error': inner_info.get('error')}
+    return geo, ('subnet', sig)
 
 
 def _find_begin(end):
@@ -366,6 +407,8 @@ def ensure_target(tree):
 def cook_tree(tree, frame=None):
     """Cook the display node and write it into the output object."""
     global _cooking
+    while tree is not None and tree.owner_tree is not None:
+        tree = tree.owner_tree
     if _cooking:
         return None
     _cooking = True
@@ -423,7 +466,8 @@ def _tag_redraw():
 
 
 def all_trees():
-    return [t for t in bpy.data.node_groups if t.bl_idname == TREE_ID]
+    """Top level networks (subnetwork trees are cooked through their subnet node)."""
+    return [t for t in bpy.data.node_groups if t.bl_idname == TREE_ID and t.owner_tree is None]
 
 
 def clear_cache():

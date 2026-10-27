@@ -102,6 +102,8 @@ class BlendiniNodeTree(bpy.types.NodeTree):
     ])
     sheet_offset: IntProperty(name="Start", default=0, min=0)
     sheet_rows: IntProperty(name="Rows", default=25, min=1, max=200)
+    owner_tree: PointerProperty(name="Owner", type=bpy.types.NodeTree,
+                                description="For subnetworks: the network containing the subnet node")
     show_parms_in_nodes: BoolProperty(name="Show Parameters on Nodes", default=False,
                                       description="Draw parameters inside the nodes as well as in the Parameters pane")
 
@@ -120,6 +122,9 @@ class BlendiniNodeBase:
     text: PointerProperty(name="Code Text", type=bpy.types.Text, update=_request_cook,
                           description="Text datablock holding the VEX code (edit in the Text Editor)")
     spare: CollectionProperty(type=BlendiniSpareParm)
+    subtree: PointerProperty(name="Network", type=bpy.types.NodeTree, update=_request_cook,
+                             poll=lambda self, t: t.bl_idname == TREE_ID and t != self.id_data,
+                             description="The network inside this subnet")
 
     @classmethod
     def poll(cls, ntree):
@@ -142,6 +147,8 @@ class BlendiniNodeBase:
         tree = self.id_data
         if not any(getattr(n, 'display_flag', False) for n in tree.nodes if n != self):
             self.display_flag = True
+        if sop.id == 'subnet':
+            self.subtree = make_subnet_tree(tree, self.name)
         update_colors(tree)
 
     def copy(self, node):
@@ -187,6 +194,20 @@ class BlendiniNodeBase:
     def ramps(self):
         from .ramps import sample
         return {sp.name: sample(sp.ramp_key) for sp in self.spare if sp.kind == 'ramp'}
+
+
+def make_subnet_tree(owner, name):
+    inner = bpy.data.node_groups.new("%s/%s" % (owner.name, name), TREE_ID)
+    inner.owner_tree = owner
+    inner.use_fake_user = True
+    inp = inner.nodes.new(NODE_PREFIX + 'subinput')
+    inp.location = (0, 200)
+    out = inner.nodes.new(NODE_PREFIX + 'output')
+    out.location = (0, 0)
+    inner.links.new(inp.outputs[0], out.inputs[0])
+    for n in inner.nodes:
+        n.display_flag = (n == out)
+    return inner
 
 
 def unique_node_name(tree, base):

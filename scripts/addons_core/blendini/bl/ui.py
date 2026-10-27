@@ -97,6 +97,10 @@ def draw_parms(node, context, layout, compact=False):
             col.prop(node, pname, text=parm.label)
     if sop.category == 'VEX':
         _draw_spare(node, layout, compact)
+    if sop.id == 'subnet':
+        row = layout.row(align=True)
+        row.prop(node, "subtree", text="")
+        row.operator("blendini.dive_in", text="Dive In", icon='TRIA_DOWN_BAR')
 
 
 def _draw_code(node, layout, compact):
@@ -206,6 +210,36 @@ class BLENDINI_OT_toggle_bypass(bpy.types.Operator):
         for n in nodes:
             n.mute = state
         cook.request_cook(tree)
+        return {'FINISHED'}
+
+
+class BLENDINI_OT_dive_in(bpy.types.Operator):
+    """Dive into the selected subnetwork (Houdini: I)"""
+    bl_idname = "blendini.dive_in"
+    bl_label = "Dive Into Subnetwork"
+
+    @classmethod
+    def poll(cls, context):
+        tree, node = _active_node(context)
+        return node is not None and node.sop_id == 'subnet' and node.subtree is not None
+
+    def execute(self, context):
+        tree, node = _active_node(context)
+        context.space_data.path.append(node.subtree, node=node)
+        return {'FINISHED'}
+
+
+class BLENDINI_OT_jump_up(bpy.types.Operator):
+    """Go back up to the parent network (Houdini: U)"""
+    bl_idname = "blendini.jump_up"
+    bl_label = "Jump Up"
+
+    @classmethod
+    def poll(cls, context):
+        return _in_blendini_tree(context) and len(context.space_data.path) > 1
+
+    def execute(self, context):
+        context.space_data.path.pop()
         return {'FINISHED'}
 
 
@@ -746,6 +780,7 @@ class BLENDINI_PT_network(bpy.types.Panel):
         col.scale_y = 0.8
         col.label(text="Tab: add node (type to search)")
         col.label(text="R: display flag   M: bypass")
+        col.label(text="I: dive into subnet   U: jump up")
         col.label(text="Ctrl+Enter in text editor: recook")
 
 
@@ -928,6 +963,8 @@ classes = (
     BLENDINI_OT_set_display,
     BLENDINI_OT_toggle_bypass,
     BLENDINI_OT_cook,
+    BLENDINI_OT_dive_in,
+    BLENDINI_OT_jump_up,
     BLENDINI_OT_edit_code,
     BLENDINI_OT_create_spare_parms,
     BLENDINI_OT_remove_spare_parm,
@@ -966,6 +1003,8 @@ def register():
         km = kc.keymaps.new(name="Node Editor", space_type='NODE_EDITOR')
         addon_keymaps.append((km, km.keymap_items.new(BLENDINI_OT_tab_menu.bl_idname, 'TAB', 'PRESS')))
         addon_keymaps.append((km, km.keymap_items.new(BLENDINI_OT_set_display.bl_idname, 'R', 'PRESS')))
+        addon_keymaps.append((km, km.keymap_items.new(BLENDINI_OT_dive_in.bl_idname, 'I', 'PRESS')))
+        addon_keymaps.append((km, km.keymap_items.new(BLENDINI_OT_jump_up.bl_idname, 'U', 'PRESS')))
 
 
 def unregister():

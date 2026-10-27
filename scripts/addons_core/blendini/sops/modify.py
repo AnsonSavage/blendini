@@ -1664,3 +1664,31 @@ def write_obj(geo, path):
         for i in range(geo.num_prims):
             pts = geo.prim_points(i) + 1
             fh.write(("f " if geo.prim_closed[i] else "l ") + " ".join(map(str, pts.tolist())) + "\n")
+
+
+@register_sop
+class SubnetSOP(SOP):
+    id = 'subnet'
+    label = "Subnetwork"
+    category = 'Utility'
+    inputs = 4
+    input_labels = ("Input 1", "Input 2", "Input 3", "Input 4")
+    icon = 'NODETREE'
+    description = "A network inside a node. Dive in with I, jump back up with U"
+
+    def cook(self, inputs, p, ctx):
+        # The cook engine evaluates the inner network.
+        return _in(inputs)
+
+
+@register_sop
+class SubnetInputSOP(SOP):
+    id = 'subinput'
+    label = "Subnet Input"
+    category = 'Utility'
+    inputs = 0
+    icon = 'IMPORT'
+    parms = (Parm('input', "Input Number", 'int', default=1, min=1, max=4),)
+
+    def cook(self, inputs, p, ctx):
+        return Geometry()
