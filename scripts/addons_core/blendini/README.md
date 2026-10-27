@@ -7,8 +7,8 @@ host and backend. You build a network of SOP nodes in a node editor. The node wi
 **display flag** cooks into a Blender object. The **Point Wrangle** runs real (subset)
 VEX code over every point in parallel.
 
-It ships as a core add-on in this Blender fork (`scripts/addons_core/blendini`). It's
-also plain Python + numpy, so it can be zipped and installed into a stock Blender 5.x.
+It ships as a core add-on in this Blender fork (`scripts/addons_core/blendini`), together
+with a *Blendini* application template.
 
 ## Installing into a regular Blender
 
@@ -91,8 +91,8 @@ expressions such as `@P.y > 0` or `@ptnum % 2 == 0`.
 The wrangle doesn't loop over points in Python. The snippet is parsed into an AST, then
 run **SIMD style**: every value is a numpy array with one lane per element. `if`/`else`,
 loops, `break`/`continue` and `return` work by masking lanes, much like a GPU, so
-typical wrangles run at numpy speed. For example, 10k points with `nearpoints` and
-`noise` cook in about 0.2 s.
+typical wrangles run at numpy speed. For example, a 490k point ripple wrangle cooks in
+about 0.8 s, and 10k points with `nearpoints` and `noise` in about 0.2 s.
 
 Supported language:
 
@@ -114,20 +114,24 @@ Builtins (partial list):
 
 - Math: `sin cos tan asin acos atan atan2 sqrt pow exp log abs sign floor ceil frac round
   min max clamp fit fit01 fit10 fit11 efit lerp smooth avg sum`.
+- Color: `hsvtorgb rgbtohsv`.
 - Vectors: `length length2 distance distance2 normalize dot cross reflect set getcomp`.
 - Matrices and quaternions: `ident rotate scale translate transpose invert determinant
-  maketransform dihedral quaternion qconvert qrotate qmultiply slerp eulertoquaternion`.
+  maketransform lookat dihedral quaternion qconvert qrotate qmultiply slerp eulertoquaternion`.
 - Random: `rand random noise snoise onoise curlnoise sample_direction_uniform`.
 - Geometry reads: `point prim vertex detail npoints nprims nvertices primpoints pointprims
   primpoint primvertexcount neighbours neighbourcount nearpoint nearpoints
-  getbbox_min/max/center/size relbbox inpointgroup inprimgroup haspointattrib
-  vertexpoint vertexprim idtopoint findattribval primarea`.
+  getbbox getbbox_min/max/center/size relbbox inpointgroup inprimgroup haspointattrib
+  vertexpoint vertexprim idtopoint findattribval primarea primintrinsic attrib
+  npointsgroup nprimitivesgroup`.
 - Geometry writes: `addpoint addprim addvertex removepoint removeprim setpointattrib
-  setprimattrib setvertexattrib setdetailattrib setpointgroup setprimgroup`. The `"add"`,
+  setprimattrib setvertexattrib setdetailattrib setattrib addpointattrib addprimattrib
+  adddetailattrib setpointgroup setprimgroup`. The `"add"`,
   `"min"`, `"max"` and `"mult"` modes are supported.
-- Arrays: `len append push pop removeindex resize find sort argsort reverse array
+- Arrays: `len append push pop insert removeindex resize find sort argsort reverse array
   isvalidindex`.
-- Strings: `sprintf printf itoa atof atoi strlen concat startswith endswith toupper tolower`.
+- Strings: `sprintf printf itoa atof atoi strlen concat startswith endswith toupper tolower
+  split join strip replace`.
 - Channels: `ch chf chi chv chs chramp`, backed by spare parameters. Ramps are curve widgets.
 - Point clouds: `pcopen pcfilter pcnumfound pcclose pcfind`.
 - Closest point queries: `xyzdist` (with `prim`/`uv` output arguments), `primuv`, `minpos`, using Blender's BVH tree.
@@ -182,5 +186,6 @@ there is no Python SOP.
 
 ## Not done yet (ideas)
 
-NURBS/curves, volumes/VDB,
-a DOP context, and a multi-line code editor inside the parameter pane.
+NURBS and Bézier primitives, volumes/VDB, a DOP context (RBD/Vellum), VOPs, VEX `struct`s
+and macros, viewport handles/states, and a multi-line code editor inside the parameter
+pane. Today the code is edited in Blender's Text Editor, which recooks live.
