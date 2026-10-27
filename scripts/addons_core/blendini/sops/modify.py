@@ -1222,3 +1222,123 @@ class TimeShiftSOP(SOP):
     def cook(self, inputs, p, ctx):
         # The actual time change happens in the cook engine (inputs are cooked at another frame).
         return _in(inputs)
+
+
+@register_sop
+class BoundSOP(SOP):
+    id = 'bound'
+    label = "Bound"
+    category = 'Primitive'
+    inputs = 1
+    icon = 'SHADING_BBOX'
+    parms = (
+        Parm('minpad', "Lower Padding", 'vector'),
+        Parm('maxpad', "Upper Padding", 'vector'),
+        Parm('divs', "Divisions", 'vector', default=(1, 1, 1)),
+    )
+
+    def cook(self, inputs, p, ctx):
+        from .generators import make_box
+        geo = _in(inputs)
+        lo, hi = geo.bbox()
+        lo = lo - np.asarray(p.minpad)
+        hi = hi + np.asarray(p.maxpad)
+        size = np.maximum(hi - lo, 1e-6)
+        box = make_box(size, [round(d) for d in p.divs])
+        box.P = box.P + (lo + hi) / 2
+        return box
+
+
+@register_sop
+class UVTextureSOP(SOP):
+    id = 'uvtexture'
+    label = "UV Texture"
+    category = 'Attribute'
+    inputs = 1
+    icon = 'UV'
+    parms = (
+        Parm('type', "Texture Type", 'enum', items=[
+            ('ortho', "Orthographic", ""), ('cyl', "Cylindrical", ""), ('sph', "Polar (Spherical)", ""),
+        ]),
+        Parm('axis', "Axis", 'enum', items=[('Y', "Y", ""), ('X', "X", ""), ('Z', "Z", "")]),
+        Parm('class', "Attribute Class", 'enum', items=[('vertex', "Vertices", ""), ('point', "Points", "")]),
+        Parm('scale', "Scale", 'vector2', default=(1.0, 1.0)),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs).copy()
+        lo, hi = geo.bbox()
+        center = (lo + hi) / 2
+        size = np.where(hi - lo == 0, 1, hi - lo)
+        a = 'XYZ'.index(p.axis)
+        others = [i for i in range(3) if i != a]
+        P = geo.P if p['class'] == 'point' else geo.P[geo.vtx_point]
+        rel = (P - center) / size
+        uv = np.zeros((len(P), 3))
+        if p.type == 'ortho':
+            uv[:, 0] = rel[:, others[0]] + 0.5
+            uv[:, 1] = rel[:, others[1]] + 0.5
+        else:
+            d = P - center
+            ang = np.arctan2(d[:, others[0]], d[:, others[1]])
+            uv[:, 0] = (ang / (2 * np.pi)) + 0.5
+            if p.type == 'cyl':
+                uv[:, 1] = rel[:, a] + 0.5
+            else:
+                r = np.linalg.norm(d, axis=1)
+                uv[:, 1] = np.arccos(np.clip(d[:, a] / np.where(r == 0, 1, r), -1, 1)) / np.pi
+                uv[:, 1] = 1 - uv[:, 1]
+        uv[:, 0] *= p.scale[0]
+        uv[:, 1] *= p.scale[1]
+        geo.attribs[p['class']]['uv'] = uv
+        return geo
+
+
+@register_sop
+class AttribNoiseSOP(SOP):
+    id = 'attribnoise'
+    label = "Attribute Noise"
+    category = 'Attribute'
+    inputs = 1
+    icon = 'MOD_NOISE'
+    time_dependent = False
+    parms = (
+        Parm('group', "Group", 'string'),
+        Parm('attribs', "Attribute Name", 'string', default='P'),
+        Parm('mode', "Operation", 'enum', items=[('add', "Add", ""), ('set', "Set", ""), ('mult', "Multiply", "")]),
+        Parm('amplitude', "Amplitude", 'float', default=0.25, soft_min=0, soft_max=2),
+        Parm('elementsize', "Element Size", 'float', default=1.0, min=0.0001, soft_max=10),
+        Parm('offset', "Offset", 'vector'),
+        Parm('octaves', "Fractal Octaves", 'int', default=3, min=1, max=10),
+        Parm('animated', "Animate (offset by time)", 'bool', default=False),
+        Parm('speed', "Pulse Speed", 'float', default=1.0, hide_when={'animated': False}),
+        Parm('signed', "Center Noise Around Zero", 'bool', default=True),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs).copy()
+        mask = _point_mask_from_group(geo, p.group)
+        off = np.asarray(p.offset, dtype=np.float64)
+        if p.animated:
+            off = off + np.array([0.0, 0.0, ctx.time * p.speed])
+        pos = geo.P[mask] / max(p.elementsize, 1e-6) + off
+        name = p.attribs.strip() or 'P'
+        arr = geo.attribs[POINT].get(name)
+        dims = arr.shape[1] if arr is not None and arr.ndim == 2 else (3 if name in ('P', 'Cd', 'N', 'v') else 1)
+        nz = _noise.fbm(pos, p.octaves, 2.0, 0.5, dims=dims)
+        if not p.signed:
+            nz = nz * 0.5 + 0.5
+        nz = nz * p.amplitude
+        if arr is None:
+            arr = np.zeros((geo.num_points,) + ((dims,) if dims > 1 else ()))
+        arr = arr.astype(np.float64).copy()
+        if p.mode == 'add':
+            arr[mask] += nz
+        elif p.mode == 'set':
+            arr[mask] = nz
+        else:
+            arr[mask] *= nz
+        geo.attribs[POINT][name] = arr
+        return geo
+
+    time_dependent = True

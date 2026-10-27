@@ -130,6 +130,16 @@ def _draw_spare(node, layout, compact):
     col = box.column(align=True)
     for i, sp in enumerate(node.spare):
         row = col.row(align=True)
+        if sp.kind == 'ramp':
+            from .ramps import ramp_node
+            row.label(text=sp.name, icon='FCURVE')
+            op = row.operator("blendini.remove_spare_parm", text="", icon='X', emboss=False)
+            op.node_name = node.name
+            op.index = i
+            rn = ramp_node(sp.ramp_key)
+            if rn is not None and not compact:
+                col.template_curve_mapping(rn, "mapping")
+            continue
         attr = {'float': 'f', 'int': 'i', 'vector': 'v', 'color': 'c', 'string': 's'}[sp.kind]
         row.prop(sp, attr, text=sp.name)
         op = row.operator("blendini.remove_spare_parm", text="", icon='X', emboss=False)
@@ -291,12 +301,13 @@ class BLENDINI_OT_create_spare_parms(bpy.types.Operator):
         for name, kind in find_channels(code):
             if name in existing:
                 continue
-            if kind == 'ramp':
-                self.report({'WARNING'}, "Ramp parameters are not supported yet (%s)" % name)
-                continue
             sp = node.spare.add()
             sp.name = name
             sp.kind = {'vector2': 'vector', 'vector4': 'vector'}.get(kind, kind)
+            if kind == 'ramp':
+                from .ramps import new_key, ramp_node
+                sp.ramp_key = new_key()
+                ramp_node(sp.ramp_key, create=True)
             added += 1
         self.report({'INFO'}, "Added %d spare parameter(s)" % added)
         cook.request_cook(tree)
@@ -755,10 +766,12 @@ def _poll_texts():
         for tree in cook.all_trees():
             for node in tree.nodes:
                 text = getattr(node, 'text', None)
-                if text is None:
+                spare = getattr(node, 'spare', None)
+                has_ramp = spare is not None and any(sp.kind == 'ramp' for sp in spare)
+                if text is None and not has_ramp:
                     continue
                 key = (tree.name, node.name)
-                h = hash(text.as_string())
+                h = hash((text.as_string() if text is not None else '', tuple(sorted(node.ramps().items()))))
                 if _text_hashes.get(key) != h:
                     if key in _text_hashes:
                         cook.request_cook(tree)

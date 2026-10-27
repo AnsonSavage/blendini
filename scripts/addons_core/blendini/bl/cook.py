@@ -169,11 +169,13 @@ def cook_node(node, ctx_base, visiting=None):
                 input_sigs.append(s)
         parms = node.parm_values()
         channels = node.channels()
+        ramps = node.ramps() if len(node.spare) else {}
         time_dep = _is_time_dependent(node, parms) or ctx_base['animated']
         sig = (
             sop.id, node.mute,
             tuple(sorted((k, _freeze(v)) for k, v in parms.items())),
             tuple(sorted((k, _freeze(v)) for k, v in channels.items())),
+            tuple(sorted(ramps.items())),
             tuple(input_sigs),
             ctx_base['frame'] if time_dep else None,
             ctx_base['objmerge_epoch'] if sop.id == 'objectmerge' else None,
@@ -190,7 +192,7 @@ def cook_node(node, ctx_base, visiting=None):
         ctx = CookContext(time=ctx_base['time'], frame=ctx_base['frame'], fps=ctx_base['fps'],
                           node_path=node.name, state=_states.setdefault(key, {}))
         ctx.channels = channels
-        ctx.ramps = {}
+        ctx.ramps = ramps
         t0 = time.perf_counter()
         error = None
         try:

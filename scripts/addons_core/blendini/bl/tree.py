@@ -44,8 +44,9 @@ class BlendiniGeometrySocket(bpy.types.NodeSocket):
 class BlendiniSpareParm(bpy.types.PropertyGroup):
     kind: EnumProperty(items=[
         ('float', "Float", ""), ('int', "Integer", ""), ('vector', "Vector", ""), ('color', "Color", ""),
-        ('string', "String", ""),
+        ('string', "String", ""), ('ramp', "Ramp", ""),
     ], update=_request_cook)
+    ramp_key: StringProperty()
     f: FloatProperty(name="Value", default=1.0, update=_request_cook)
     i: IntProperty(name="Value", default=1, update=_request_cook)
     v: FloatVectorProperty(name="Value", size=3, default=(1.0, 1.0, 1.0), update=_request_cook)
@@ -157,7 +158,11 @@ class BlendiniNodeBase:
         return values
 
     def channels(self):
-        return {sp.name: sp.value() for sp in self.spare}
+        return {sp.name: sp.value() for sp in self.spare if sp.kind != 'ramp'}
+
+    def ramps(self):
+        from .ramps import sample
+        return {sp.name: sample(sp.ramp_key) for sp in self.spare if sp.kind == 'ramp'}
 
 
 def unique_node_name(tree, base):
