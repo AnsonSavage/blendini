@@ -23,6 +23,18 @@ def geo_to_mesh(geo, mesh):
     npts = geo.num_points
     sizes = geo.prim_sizes()
     face_mask = geo.prim_closed & (sizes >= 3)
+    if geo.num_vertices and npts:
+        # Blender can't represent polygons that use a point twice: skip them.
+        vp = geo.vertex_prim()
+        valid_pts = (geo.vtx_point >= 0) & (geo.vtx_point < npts)
+        pairs = vp.astype(np.int64) * (npts + 1) + np.clip(geo.vtx_point, 0, npts)
+        uniq = np.unique(pairs)
+        if len(uniq) != len(pairs) or not valid_pts.all():
+            uniq_count = np.bincount(uniq // (npts + 1), minlength=geo.num_prims)
+            bad = uniq_count != sizes
+            bad_pts = np.zeros(geo.num_prims, dtype=bool)
+            bad_pts[vp[~valid_pts]] = True
+            face_mask &= ~(bad | bad_pts)
     face_prims = np.nonzero(face_mask)[0]
     line_prims = np.nonzero(~face_mask & (sizes >= 2))[0]
 

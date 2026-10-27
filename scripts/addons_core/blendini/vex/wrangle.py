@@ -45,6 +45,7 @@ class WrangleContext:
         self.removed = {POINT: [], PRIM: []}
         self.remove_prim_points = False
         self.sets = []            # (cls, name, idx, type, values, mode)
+        self.new_attribs = []     # (cls, name, default V)
         self.groups = []          # (cls, name, idx, values)
 
     # -- reading
@@ -200,6 +201,9 @@ class WrangleContext:
     def queue_set(self, cls, name, idx, t, values, mode):
         self.sets.append((cls, name, np.asarray(idx, dtype=np.int64), t, values, mode))
 
+    def queue_add_attrib(self, cls, name, default):
+        self.new_attribs.append((cls, name, default))
+
     def queue_group(self, cls, name, idx, values):
         self.groups.append((cls, name, np.asarray(idx, dtype=np.int64), values))
 
@@ -255,7 +259,12 @@ class WrangleContext:
                 if 0 <= prim < len(polys):
                     polys[prim].append(pt)
             _rebuild(geo, polys)
-        # 3. setattrib / setgroup calls.
+        # 3. addattrib / setattrib / setgroup calls.
+        for acls, name, default in self.new_attribs:
+            if name not in geo.attribs[acls]:
+                arr = _ensure_attrib(geo, acls, name, default.t)
+                if not is_array(default.t):
+                    arr[...] = default.d[0]
         for scls, name, idx, t, values, mode in self.sets:
             n = geo.count(scls)
             ok = (idx >= 0) & (idx < n)

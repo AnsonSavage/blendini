@@ -1628,3 +1628,122 @@ def _primuv(I, args, mask, hint):
             vals = arr[pts]
         out[i] = np.tensordot(w, vals, axes=1)
     return V(t if t != 'int' else 'float', out)
+
+
+# ----------------------------------------------------------------------------
+# Generic attribute access
+
+
+_CLASS_ALIASES = {'point': 'point', 'prim': 'prim', 'primitive': 'prim', 'vertex': 'vertex', 'detail': 'detail',
+                  'global': 'detail'}
+
+
+@builtin('attrib')
+def _attrib(I, args, mask, hint):
+    geo = _geo(I, args[0])
+    cls = _CLASS_ALIASES.get(_uniform_str(args[1]), 'point')
+    name = _uniform_str(args[2])
+    idx = full(convert(args[3], 'int'), _n(I, args[3])) if len(args) > 3 else np.zeros(1, dtype=np.int64)
+    if cls == 'detail':
+        idx = np.zeros(1, dtype=np.int64)
+    return _attr_read(I, geo, cls, name, idx, hint)
+
+
+@builtin('setattrib')
+def _setattrib(I, args, mask, hint):
+    # setattrib(geohandle, attribclass, attribute_name, element_num, vertex_num, value, mode)
+    n = I.n
+    cls = _CLASS_ALIASES.get(_uniform_str(args[1]), 'point')
+    name = _uniform_str(args[2])
+    idx = full(convert(args[3], 'int'), n)
+    value = args[5] if len(args) > 5 else args[-1]
+    mode = _uniform_str(args[6]) if len(args) > 6 else 'set'
+    if cls == 'vertex':
+        vtx = full(convert(args[4], 'int'), n)
+        idx = np.where(vtx >= 0, I.ctx.vertex_index(idx, vtx), idx)
+    if cls == 'detail':
+        idx = np.zeros(n, dtype=np.int64)
+    I.ctx.queue_set(cls, name, idx[mask], value.t, full(value, n)[mask], mode)
+    return const('int', 1)
+
+
+def _add_attrib_fn(cls):
+    def fn(I, args, mask, hint):
+        name = _uniform_str(args[1])
+        default = args[2] if len(args) > 2 else const('float', 0.0)
+        I.ctx.queue_add_attrib(cls, name, default)
+        return const('int', 1)
+    return fn
+
+
+FUNCTIONS['addpointattrib'] = _add_attrib_fn('point')
+FUNCTIONS['addprimattrib'] = _add_attrib_fn('prim')
+FUNCTIONS['addvertexattrib'] = _add_attrib_fn('vertex')
+FUNCTIONS['adddetailattrib'] = _add_attrib_fn('detail')
+
+
+@builtin('addattrib')
+def _addattrib(I, args, mask, hint):
+    cls = _CLASS_ALIASES.get(_uniform_str(args[1]), 'point')
+    return _add_attrib_fn(cls)(I, [args[0]] + args[2:], mask, hint)
+
+
+@builtin('npointsgroup')
+def _npointsgroup(I, args, mask, hint):
+    geo = _geo(I, args[0])
+    g = geo.groups['point'].get(_uniform_str(args[1]))
+    return const('int', int(g.sum()) if g is not None else 0)
+
+
+@builtin('nprimitivesgroup')
+def _nprimsgroup(I, args, mask, hint):
+    geo = _geo(I, args[0])
+    g = geo.groups['prim'].get(_uniform_str(args[1]))
+    return const('int', int(g.sum()) if g is not None else 0)
+
+
+@builtin('insert', inplace=True)
+def _insert(I, args, mask, hint):
+    arr, idx, val = args
+    et = elem_type(arr.t)
+    d = _array_lanes(I, arr)
+    ii = full(convert(idx, 'int'), I.n)
+    vals = full(convert(val, et), I.n)
+    for i in np.nonzero(mask)[0]:
+        k = int(np.clip(ii[i], 0, len(d[i])))
+        if et == 'string':
+            d[i] = list(d[i][:k]) + [vals[i]] + list(d[i][k:])
+        else:
+            d[i] = np.concatenate([d[i][:k], np.asarray(vals[i], dtype=d[i].dtype)[None], d[i][k:]])
+    return V(arr.t, d), None
+
+
+@builtin('split')
+def _split(I, args, mask, hint):
+    n = I.n
+    s = full(args[0], n)
+    sep = full(args[1], n) if len(args) > 1 else None
+    out = np.empty(n, dtype=object)
+    for i in range(n):
+        out[i] = s[i].split(sep[i] if sep is not None and sep[i] else None)
+    return V('string[]', out)
+
+
+@builtin('strip')
+def _strip(I, args, mask, hint):
+    return V('string', np.array([x.strip() for x in args[0].d], dtype=object))
+
+
+@builtin('replace')
+def _replace(I, args, mask, hint):
+    n = _n(I, *args)
+    s, a, b = (full(x, n) for x in args[:3])
+    return V('string', np.array([x.replace(y, z) for x, y, z in zip(s, a, b)], dtype=object))
+
+
+@builtin('join')
+def _join(I, args, mask, hint):
+    n = I.n
+    arr = full(args[0], n)
+    sep = full(args[1], n) if len(args) > 1 else np.full(n, ' ', dtype=object)
+    return V('string', np.array([sep[i].join(str(x) for x in arr[i]) for i in range(n)], dtype=object))
