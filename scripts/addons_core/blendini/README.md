@@ -12,6 +12,12 @@ also plain Python + numpy, so it can be zipped and installed into a stock Blende
 
 ## Quick start
 
+**Fastest:** *File → New → Blendini* (or pick Blendini on the splash screen). This
+application template enables the add-on, starts with an empty scene and a `geo1` network,
+and arranges a Houdini-style layout.
+
+Or step by step:
+
 1. Enable **Blendini** in *Preferences → Add-ons*.
 2. In the 3D viewport choose *Add → Blendini Geometry*. This creates `geo1` (an object
    plus its SOP network, like `/obj/geo1`) and opens the network in a node editor.
