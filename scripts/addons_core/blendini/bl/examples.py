@@ -134,6 +134,7 @@ def _new_tree(name, offset):
         obj = bpy.data.objects.new(name, mesh)
         bpy.context.scene.collection.objects.link(obj)
     tree.target = obj
+    obj["blendini_tree"] = tree.name
     from .display import setup_target
     setup_target(obj)
     obj.location = offset

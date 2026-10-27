@@ -632,6 +632,14 @@ class BLENDINI_PT_network(bpy.types.Panel):
         layout.prop(tree, "target")
         layout.prop(tree, "auto_cook")
         layout.prop(tree, "show_parms_in_nodes")
+        box = layout.box()
+        box.label(text="Viewport Display", icon='OVERLAY')
+        row = box.row(align=True)
+        row.prop(tree, "show_point_numbers", toggle=True, text="Point #")
+        row.prop(tree, "show_prim_numbers", toggle=True, text="Prim #")
+        row.prop(tree, "show_normals", toggle=True, text="Normals")
+        if tree.show_normals:
+            box.prop(tree, "normal_scale")
         layout.operator("blendini.cook", icon='FILE_REFRESH')
         layout.operator("blendini.houdini_theme", icon='COLOR')
         layout.operator("blendini.houdini_layout", icon='WORKSPACE')
@@ -643,6 +651,40 @@ class BLENDINI_PT_network(bpy.types.Panel):
         col.label(text="Tab: add node (type to search)")
         col.label(text="R: display flag   M: bypass")
         col.label(text="Ctrl+Enter in text editor: recook")
+
+
+class BLENDINI_PT_view3d(bpy.types.Panel):
+    """Display options for the Blendini network of the active object (Houdini's display toolbar)"""
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Blendini"
+    bl_label = "Blendini Display"
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj is not None and obj.get("blendini_tree") is not None
+
+    def draw(self, context):
+        layout = self.layout
+        tree = bpy.data.node_groups.get(context.active_object["blendini_tree"])
+        if tree is None:
+            layout.label(text="Network not found")
+            return
+        layout.label(text=tree.name, icon='NODETREE')
+        col = layout.column(align=True)
+        col.prop(tree, "show_point_numbers")
+        col.prop(tree, "show_prim_numbers")
+        col.prop(tree, "show_normals")
+        if tree.show_normals:
+            col.prop(tree, "normal_scale")
+        node = cook.display_node(tree)
+        geo = cook.node_geometry(node) if node is not None else None
+        if geo is not None:
+            box = layout.box()
+            box.label(text="Display: %s" % node.name, icon='HIDE_OFF')
+            box.label(text="%d points, %d prims" % (geo.num_points, geo.num_prims))
+        layout.operator("blendini.houdini_layout", icon='WORKSPACE')
 
 
 # ----------------------------------------------------------------------------
@@ -800,6 +842,7 @@ classes = (
     BLENDINI_PT_parameters,
     BLENDINI_PT_info,
     BLENDINI_PT_network,
+    BLENDINI_PT_view3d,
     BLENDINI_MT_tab,
 ) + tuple(CATEGORY_MENUS)
 
@@ -812,6 +855,8 @@ def _all_classes():
 def register():
     for cls in _all_classes():
         bpy.utils.register_class(cls)
+    from . import overlay
+    overlay.register()
     bpy.types.VIEW3D_MT_add.append(draw_view3d_add)
     bpy.app.handlers.frame_change_post.append(on_frame_change)
     bpy.app.handlers.load_post.append(on_load_post)
@@ -826,6 +871,8 @@ def register():
 
 
 def unregister():
+    from . import overlay
+    overlay.unregister()
     for km, kmi in addon_keymaps:
         try:
             km.keymap_items.remove(kmi)

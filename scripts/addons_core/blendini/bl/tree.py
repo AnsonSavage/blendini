@@ -29,6 +29,14 @@ def _request_cook(self, context=None):
         cook.request_cook(tree)
 
 
+def _redraw_views():
+    wm = bpy.context.window_manager
+    for win in (wm.windows if wm else ()):
+        for area in win.screen.areas:
+            if area.type == 'VIEW_3D':
+                area.tag_redraw()
+
+
 class BlendiniGeometrySocket(bpy.types.NodeSocket):
     bl_idname = SOCKET_ID
     bl_label = "Geometry"
@@ -81,6 +89,14 @@ class BlendiniNodeTree(bpy.types.NodeTree):
     )
     auto_cook: BoolProperty(name="Auto Update", default=True,
                             description="Cook automatically when parameters change (Houdini: Auto Update)")
+    show_point_numbers: BoolProperty(name="Point Numbers", default=False, update=lambda s, c: _redraw_views(),
+                                     description="Display point numbers in the viewport")
+    show_prim_numbers: BoolProperty(name="Primitive Numbers", default=False, update=lambda s, c: _redraw_views(),
+                                    description="Display primitive numbers in the viewport")
+    show_normals: BoolProperty(name="Normals", default=False, update=lambda s, c: _redraw_views(),
+                               description="Display normals in the viewport")
+    normal_scale: FloatProperty(name="Normal Scale", default=1.0, min=0.0, soft_max=10.0,
+                                update=lambda s, c: _redraw_views())
     show_parms_in_nodes: BoolProperty(name="Show Parameters on Nodes", default=False,
                                       description="Draw parameters inside the nodes as well as in the Parameters pane")
 
