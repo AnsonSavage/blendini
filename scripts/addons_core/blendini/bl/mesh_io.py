@@ -277,7 +277,10 @@ def mesh_to_geo(mesh, matrix=None):
             used[le] = True
         loose_edges = ev[~used].astype(np.int64)
         if len(loose_edges):
-            geo.add_prims_flat(np.full(len(loose_edges), 2), loose_edges.ravel(), False)
+            chains, closed = chain_edges(loose_edges)
+            sizes = np.array([len(c) for c in chains], dtype=np.int64)
+            geo.add_prims_flat(sizes, np.concatenate(chains), np.array(closed, dtype=bool))
+            loose_edges = np.zeros((len(chains), 2), dtype=np.int64)  # one primitive per chain
 
     # Attributes
     for attr in mesh.attributes:
@@ -350,3 +353,48 @@ def _read_attr(attr):
             out[i] = item.value
         return out
     return None
+
+
+def chain_edges(edges):
+    """Join loose edges into polylines. Returns (list of point index arrays, list of closed flags)."""
+    from collections import defaultdict
+    adj = defaultdict(list)
+    for i, (a, b) in enumerate(edges.tolist()):
+        adj[a].append((b, i))
+        adj[b].append((a, i))
+    used = np.zeros(len(edges), dtype=bool)
+    chains, closed = [], []
+
+    def walk(start):
+        chain = [start]
+        cur = start
+        while True:
+            nxt = None
+            for other, ei in adj[cur]:
+                if not used[ei]:
+                    used[ei] = True
+                    nxt = other
+                    break
+            if nxt is None:
+                return chain, False
+            if nxt == start:
+                return chain, True
+            chain.append(nxt)
+            cur = nxt
+            if len(adj[cur]) != 2:
+                # Stop at branch points / ends so every chain is a simple polyline.
+                return chain, False
+    # Open chains start at points that are not in the middle of a line.
+    for v in list(adj):
+        if len(adj[v]) != 2:
+            while any(not used[ei] for _o, ei in adj[v]):
+                chain, is_closed = walk(v)
+                chains.append(np.array(chain, dtype=np.int64))
+                closed.append(is_closed)
+    # Whatever is left are closed loops.
+    for v in list(adj):
+        while any(not used[ei] for _o, ei in adj[v]):
+            chain, is_closed = walk(v)
+            chains.append(np.array(chain, dtype=np.int64))
+            closed.append(is_closed)
+    return chains, closed
