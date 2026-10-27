@@ -1835,3 +1835,46 @@ class TrailSOP(SOP):
         geo.attribs[POINT]['v'] = v
         geo.attribs[POINT]['velocity'] = v
         return geo
+
+
+@register_sop
+class PointsFromVolumeSOP(SOP):
+    id = 'pointsfromvolume'
+    label = "Points from Volume"
+    category = 'Copy'
+    inputs = 1
+    icon = 'LIGHTPROBE_VOLUME'
+    description = "Fill a closed surface with a (jittered) lattice of points"
+    parms = (
+        Parm('pointsep', "Point Separation", 'float', default=0.1, min=0.001, soft_max=1),
+        Parm('jitter', "Jitter Scale", 'float', default=0.0, min=0, max=1),
+        Parm('seed', "Jitter Seed", 'int', default=0),
+        Parm('maxpoints', "Max Points", 'int', default=200000, min=1),
+    )
+
+    def cook(self, inputs, p, ctx):
+        from ..core.spatial import closest
+        geo = _in(inputs)
+        out = Geometry()
+        if geo.num_prims == 0:
+            return out
+        lo, hi = geo.bbox()
+        sep = max(p.pointsep, 1e-4)
+        axes = [np.arange(lo[i] + sep / 2, hi[i], sep) for i in range(3)]
+        count = int(np.prod([len(a) for a in axes]))
+        if count == 0:
+            return out
+        if count > p.maxpoints:
+            raise CookError("Too many candidate points (%d). Increase the point separation." % count)
+        X, Y, Z = np.meshgrid(*axes, indexing='ij')
+        P = np.stack([X.ravel(), Y.ravel(), Z.ravel()], axis=1)
+        if p.jitter:
+            rng = np.random.RandomState(p.seed & 0x7FFFFFFF)
+            P = P + (rng.random_sample(P.shape) - 0.5) * sep * p.jitter
+        loc, nrm, prim, dist = closest(geo, P)
+        if (prim < 0).all():
+            raise CookError("Points from Volume needs Blender's BVH tree (run inside Blender)")
+        inside = np.sum((P - loc) * nrm, axis=1) < 0
+        out.P = P[inside]
+        out.attribs[POINT]['pscale'] = np.full(out.num_points, sep / 2)
+        return out
