@@ -451,3 +451,87 @@ class AttribFromMapSOP(SOP):
             # Also provide point colors so wrangles can read them.
             geo.attribs[POINT]['Cd'] = promote(geo, rgba[:, :3], VERTEX, POINT, 'mean')
         return geo
+
+
+@register_sop
+class VoronoiFractureSOP(SOP):
+    id = 'voronoifracture'
+    label = "Voronoi Fracture"
+    category = 'Polygon'
+    inputs = 2
+    input_labels = ("Geometry to Fracture", "Cell Points")
+    icon = 'MOD_EXPLODE'
+    description = "Cut closed geometry into Voronoi cells (uses bmesh bisect + hole filling)"
+    parms = (
+        Parm('npts', "Cell Count (no 2nd input)", 'int', default=20, min=1, soft_max=200),
+        Parm('seed', "Seed", 'int', default=0),
+        Parm('neighbours', "Max Neighbour Cells", 'int', default=14, min=3, max=64),
+        Parm('cutgroup', "Inside Group", 'string', default='inside'),
+    )
+
+    def cook(self, inputs, p, ctx):
+        from ..bl.mesh_io import geo_to_mesh, mesh_to_geo
+        from ..core.geometry import merge, PRIM
+        geo = _in(inputs, 0)
+        if geo.num_prims == 0:
+            return geo
+        sites_geo = _in(inputs, 1)
+        if sites_geo.num_points:
+            sites = sites_geo.P.copy()
+        else:
+            lo, hi = geo.bbox()
+            rng = np.random.RandomState(p.seed & 0x7FFFFFFF)
+            sites = lo + rng.random_sample((max(p.npts, 1), 3)) * (hi - lo)
+        k = min(max(p.neighbours, 3), len(sites) - 1)
+        src_mesh = bpy.data.meshes.new("_blendini_vfrac")
+        try:
+            geo_to_mesh(geo, src_mesh)
+            pieces = []
+            for i, site in enumerate(sites):
+                d = np.linalg.norm(sites - site, axis=1)
+                order = np.argsort(d)[1:k + 1]
+                bm = bmesh.new()
+                bm.from_mesh(src_mesh)
+                for j in order:
+                    other = sites[j]
+                    normal = other - site
+                    ln = np.linalg.norm(normal)
+                    if ln == 0:
+                        continue
+                    normal /= ln
+                    mid = (site + other) / 2
+                    geom = bm.verts[:] + bm.edges[:] + bm.faces[:]
+                    res = bmesh.ops.bisect_plane(bm, geom=geom, dist=1e-6, plane_co=mid, plane_no=normal,
+                                                 clear_outer=True)
+                    cut_edges = [e for e in res['geom_cut'] if isinstance(e, bmesh.types.BMEdge)]
+                    if cut_edges:
+                        bmesh.ops.holes_fill(bm, edges=cut_edges, sides=0)
+                    if not bm.faces:
+                        break
+                if not bm.faces:
+                    bm.free()
+                    continue
+                tmp = bpy.data.meshes.new("_blendini_vcell")
+                bm.to_mesh(tmp)
+                bm.free()
+                try:
+                    piece = mesh_to_geo(tmp)
+                finally:
+                    bpy.data.meshes.remove(tmp)
+                piece.attribs[PRIM]['name'] = np.array(["piece%d" % i] * piece.num_prims, dtype=object)
+                piece.attribs[PRIM]['class'] = np.full(piece.num_prims, len(pieces), dtype=np.int64)
+                pieces.append(piece)
+        finally:
+            bpy.data.meshes.remove(src_mesh)
+        out = merge(pieces)
+        if p.cutgroup and out.num_prims:
+            # Faces whose normal doesn't match any original face are the new inside faces.
+            out.groups[PRIM][p.cutgroup] = _inside_faces(out, geo)
+        return out
+
+
+def _inside_faces(out, original):
+    from ..core.spatial import closest
+    centers = out.prim_centers()
+    loc, nrm, prim, dist = closest(original, centers)
+    return dist > 1e-4

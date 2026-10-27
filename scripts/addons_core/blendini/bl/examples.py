@@ -89,6 +89,18 @@ rotate(m, rand(it) * 0.8, normalize(set(rand(it + 1) - 0.5, 1, rand(it + 2) - 0.
 """
 
 
+EXPLODE = """\
+// Push each piece away from the centre (runs per piece in the For-Each block)
+vector c = getbbox_center(0);
+@P += normalize(c) * ch("explode") * length(c);
+"""
+
+INSIDE = """\
+// Colour the freshly cut inside faces
+@Cd = @group_inside ? set(0.95, 0.45, 0.15) : set(0.75, 0.78, 0.82);
+"""
+
+
 def _node(tree, sop_id, loc, **parms):
     node = tree.nodes.new(NODE_PREFIX + sop_id)
     node.location = loc
@@ -227,6 +239,18 @@ def build_examples():
     t.links.new(col.outputs[0], mrg.inputs[0])
     t.links.new(ball.outputs[0], mrg.inputs[0])
     _finish(t, mrg)
+    trees.append(t)
+
+    t = _new_tree("fracture", (90, 0, 0))
+    box = _node(t, 'box', (0, 600), size=(2.0, 2.0, 2.0))
+    fr = _node(t, 'voronoifracture', (0, 400), npts=30, seed=4)
+    col = _node(t, 'primwrangle', (0, 200), snippet=INSIDE)
+    begin = _node(t, 'foreach_begin', (0, 0))
+    w = _node(t, 'attribwrangle', (0, -200), snippet=EXPLODE)
+    _spare(w, explode=0.35)
+    end = _node(t, 'foreach_end', (0, -400), attrib='name')
+    _chain(t, [box, fr, col, begin, w, end])
+    _finish(t, end)
     trees.append(t)
 
     t = _new_tree("spiral", (50, 0, 0))

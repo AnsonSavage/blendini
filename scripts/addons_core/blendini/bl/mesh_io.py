@@ -172,11 +172,21 @@ def _write_attr(mesh, name, domain, data):
     if data.dtype == object:
         if len(data) and not isinstance(data[0], str):
             return  # array attributes are not representable
+        if domain != 'POINT':
+            # Face/corner string attributes hit unsupported code paths in Geometry Nodes
+            # (used for point display / instancing), so only point strings are written.
+            return
         attr = _new_attr(mesh, name, 'STRING', domain)
         if attr is None:
             return
-        for i, s in enumerate(data):
-            attr.data[i].value = str(s)
+        values = [str(s) for s in data]
+        try:
+            for item, s in zip(attr.data, values):
+                item.value = s
+        except TypeError:
+            # Blender 5.x stores string attributes as bytes.
+            for item, s in zip(attr.data, values):
+                item.value = s.encode('utf-8')
         return
     if data.dtype == bool:
         attr = _new_attr(mesh, name, 'BOOLEAN', domain)
@@ -350,7 +360,8 @@ def _read_attr(attr):
     if t == 'STRING':
         out = np.empty(n, dtype=object)
         for i, item in enumerate(attr.data):
-            out[i] = item.value
+            v = item.value
+            out[i] = v.decode('utf-8', 'replace') if isinstance(v, bytes) else v
         return out
     return None
 

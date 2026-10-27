@@ -33,8 +33,8 @@ Or step by step:
 1. Enable **Blendini** in *Preferences → Add-ons*.
 2. In the 3D viewport choose *Add → Blendini Geometry*. This creates `geo1` (an object
    plus its SOP network, like `/obj/geo1`) and opens the network in a node editor.
-3. Or use *Add → Blendini Examples* to build nine example networks: ripple, scatter and
-   copy, plexus, city, particles, for-each, L-system tree, Vellum cloth and spiral. Press
+3. Or use *Add → Blendini Examples* to build ten example networks: ripple, scatter and
+   copy, plexus, city, particles, for-each, L-system tree, Vellum cloth, fracture and spiral. Press
    play for the simulations.
 4. In the node editor:
    - **Tab**: Houdini-style TAB menu (start typing to search). With a node selected, the new
@@ -69,7 +69,7 @@ Blender is Z-up and Houdini is Y-up. Output objects are rotated 90° around X so
 |-----------|------|
 | Primitive | Box, Grid, Sphere (UV / icosahedron), Tube, Torus, Circle, Line, Platonic Solids, Bound, Font\*, L-System |
 | Manipulate| **Vellum Cloth (PBD)** (stretch/bend constraints, pins, ground, colliders), Transform, **Edit** (move points in Blender's Edit Mode, stored as offsets), Mountain, Point Jitter, Peak, Smooth, Ray\* |
-| Polygon   | Add, Clean, Ends, Fuse, Facet, Divide, Reverse, PolyExtrude, PolyWire, Sweep, Resample, Subdivide\*, PolyBevel\*, Boolean\*, Remesh\*, PolyReduce\*, Clip\* |
+| Polygon   | **Voronoi Fracture\***, Add, Clean, Ends, Fuse, Facet, Divide, Reverse, PolyExtrude, PolyWire, Sweep, Resample, Subdivide\*, PolyBevel\*, Boolean\*, Remesh\*, PolyReduce\*, Clip\* |
 | Attribute | Attribute Create / Delete / Rename / Promote / Randomize / Noise / Transfer, Attribute from Map\*, Color, Normal, Connectivity, Measure, UV Texture, PolyFrame, Trail (velocity, also feeds Blender motion blur) |
 | Group     | Group Create (pattern / bounding box / normal / random / `@expression`), Blast |
 | Copy      | Copy to Points (orient, N/up, pscale, scale, **Pack and Instance**), Unpack, Copy and Transform, Scatter |
