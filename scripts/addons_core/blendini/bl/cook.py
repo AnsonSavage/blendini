@@ -386,6 +386,13 @@ def cook_tree(tree, frame=None):
         except CookError as ex:
             _cache.setdefault(_node_key(node), {})['error'] = str(ex)
             geo, sig = Geometry(), None
+        # Template flagged nodes are cooked too so the viewport can draw them as guides.
+        for other in tree.nodes:
+            if getattr(other, 'template_flag', False) and other != node:
+                try:
+                    cook_node(other, ctx_base)
+                except CookError:
+                    pass
         obj = ensure_target(tree)
         tkey = ('__written__', _tree_key(tree))
         if _cache.get(tkey) != (sig, obj.data.name) or sig is None:

@@ -1590,3 +1590,77 @@ class UnpackSOP(SOP):
     def cook(self, inputs, p, ctx):
         from ..core.instances import unpack
         return unpack(_in(inputs))
+
+
+@register_sop
+class FileSOP(SOP):
+    id = 'file'
+    label = "File"
+    category = 'Utility'
+    inputs = 0
+    icon = 'FILE_FOLDER'
+    description = "Read geometry from a Wavefront .obj file"
+    parms = (
+        Parm('file', "Geometry File", 'string', default='', description="Path to an .obj file ('//' is relative to the .blend)"),
+    )
+
+    def cook(self, inputs, p, ctx):
+        path = p.file.strip()
+        if not path:
+            return Geometry()
+        try:
+            import bpy
+            path = bpy.path.abspath(path)
+        except ImportError:
+            pass
+        try:
+            return read_obj(path)
+        except OSError as ex:
+            raise CookError("Can't read %s: %s" % (path, ex.strerror or ex))
+
+
+def read_obj(path):
+    verts = []
+    uvs = []
+    faces = []
+    face_uv = []
+    lines = []
+    with open(path, 'r', encoding='utf-8', errors='replace') as fh:
+        for line in fh:
+            if line.startswith('v '):
+                verts.append([float(x) for x in line.split()[1:4]])
+            elif line.startswith('vt '):
+                parts = line.split()[1:3]
+                uvs.append([float(x) for x in parts] + [0.0] * (2 - len(parts)))
+            elif line.startswith('f '):
+                idx, tidx = [], []
+                for tok in line.split()[1:]:
+                    parts = tok.split('/')
+                    i = int(parts[0])
+                    idx.append(i - 1 if i > 0 else len(verts) + i)
+                    if len(parts) > 1 and parts[1]:
+                        t = int(parts[1])
+                        tidx.append(t - 1 if t > 0 else len(uvs) + t)
+                faces.append(idx)
+                face_uv.append(tidx if len(tidx) == len(idx) else None)
+            elif line.startswith('l '):
+                idx = [int(t.split('/')[0]) for t in line.split()[1:]]
+                lines.append([i - 1 if i > 0 else len(verts) + i for i in idx])
+    geo = Geometry.from_polys(np.array(verts, dtype=np.float64).reshape(-1, 3), faces)
+    if uvs and faces and all(f is not None for f in face_uv):
+        uv = np.zeros((geo.num_vertices, 3))
+        uv[:, :2] = np.array(uvs)[np.concatenate(face_uv)]
+        geo.attribs[VERTEX]['uv'] = uv
+    if lines:
+        geo.add_prims(lines, closed=False)
+    return geo
+
+
+def write_obj(geo, path):
+    with open(path, 'w', encoding='utf-8') as fh:
+        fh.write("# Blendini\n")
+        for p in geo.P:
+            fh.write("v %.6f %.6f %.6f\n" % tuple(p))
+        for i in range(geo.num_prims):
+            pts = geo.prim_points(i) + 1
+            fh.write(("f " if geo.prim_closed[i] else "l ") + " ".join(map(str, pts.tolist())) + "\n")

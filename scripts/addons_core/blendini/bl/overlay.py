@@ -82,8 +82,39 @@ def draw_text():
                 blf.draw(font, str(i))
 
 
+def _draw_templates():
+    shader = None
+    for tree in cook.all_trees():
+        obj = tree.target
+        if obj is None or not obj.visible_get():
+            continue
+        for node in tree.nodes:
+            if not getattr(node, 'template_flag', False):
+                continue
+            geo = cook.node_geometry(node)
+            if geo is None or geo.num_points == 0:
+                continue
+            E = geo.edges()[:MAX_NORMALS * 2]
+            if len(E):
+                co = _world_points(obj, geo.P)
+                coords = co[E.ravel()].astype(np.float32)
+                prim = 'LINES'
+            else:
+                coords = _world_points(obj, geo.P[:MAX_NORMALS]).astype(np.float32)
+                prim = 'POINTS'
+            if shader is None:
+                shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+            batch = batch_for_shader(shader, prim, {"pos": coords})
+            shader.uniform_float("color", (0.85, 0.55, 0.75, 0.6))
+            gpu.state.blend_set('ALPHA')
+            gpu.state.point_size_set(3.0)
+            batch.draw(shader)
+            gpu.state.blend_set('NONE')
+
+
 def draw_lines():
     context = bpy.context
+    _draw_templates()
     for tree, geo, obj in _displayed(context):
         if not tree.show_normals:
             continue

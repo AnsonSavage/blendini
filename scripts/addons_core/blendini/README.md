@@ -21,8 +21,11 @@ also plain Python + numpy, so it can be zipped and installed into a stock Blende
    - **Tab**: Houdini-style TAB menu (start typing to search).
    - **R**: set the display flag on the active node.
    - **M**: bypass (Blender's mute, shown as a pass-through).
+   - Each node has **display**, **template** (ghosted wireframe guide) and **bypass** flag
+     buttons.
    - **N** sidebar → **Parameters** tab: the parameter pane and the geometry info
-     (point and primitive counts, attributes, groups, cook time, `printf` output).
+     (point and primitive counts, attributes, groups, cook time, `printf` output), plus
+     *Save Geometry to Disk* (.obj).
    - *Blendini* tab → *Apply Houdini-like Theme* for the grey gradient viewport and a dark
      network editor. *Houdini-like Layout* splits the screen into viewport + network +
      spreadsheet.
@@ -47,7 +50,7 @@ Blender is Z-up and Houdini is Y-up. Output objects are rotated 90° around X so
 | Group     | Group Create (pattern / bounding box / normal / random / `@expression`), Blast |
 | Copy      | Copy to Points (orient, N/up, pscale, scale, **Pack and Instance**), Unpack, Copy and Transform, Scatter |
 | VEX       | Attribute Wrangle, **Point Wrangle**, Primitive Wrangle, Detail Wrangle, **Solver (VEX)** |
-| Utility   | Merge (multi-input), Switch, Null, Output, Sort, Time Shift, **Block Begin / Block End (For-Each pieces or feedback)** |
+| Utility   | File (.obj), Merge (multi-input), Switch, Null, Output, Sort, Time Shift, **Block Begin / Block End (For-Each pieces or feedback)** |
 | Blender   | Object Merge, Solidify\*, **Blender Modifier\*** (any modifier, including Geometry Nodes groups) |
 
 \* These use Blender as the backend: the geometry passes through a real Blender modifier

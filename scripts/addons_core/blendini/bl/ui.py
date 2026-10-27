@@ -40,6 +40,7 @@ def draw_node_header(node, context, layout):
     op = row.operator("blendini.set_display", text="", icon='HIDE_OFF' if node.display_flag else 'HIDE_ON',
                       depress=node.display_flag)
     op.node_name = node.name
+    row.prop(node, "template_flag", text="", icon='MESH_DATA', toggle=True)
     op = row.operator("blendini.toggle_bypass", text="", icon='CANCEL', depress=node.mute)
     op.node_name = node.name
     info = cook.node_info(node)
@@ -479,6 +480,33 @@ class BLENDINI_OT_houdini_layout(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class BLENDINI_OT_export_obj(bpy.types.Operator):
+    """Write the active node's geometry to an .obj file (like a ROP Geometry Output)"""
+    bl_idname = "blendini.export_obj"
+    bl_label = "Save Geometry to Disk"
+    filepath: StringProperty(subtype='FILE_PATH', default="//geo.obj")
+    filter_glob: StringProperty(default="*.obj", options={'HIDDEN'})
+
+    @classmethod
+    def poll(cls, context):
+        tree, node = _active_node(context)
+        return node is not None and cook.node_geometry(node) is not None
+
+    def invoke(self, context, event):
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
+    def execute(self, context):
+        from ..sops.modify import write_obj
+        from ..core.instances import unpack
+        tree, node = _active_node(context)
+        geo = unpack(cook.node_geometry(node))
+        path = bpy.path.abspath(self.filepath)
+        write_obj(geo, path)
+        self.report({'INFO'}, "Wrote %d points, %d primitives to %s" % (geo.num_points, geo.num_prims, path))
+        return {'FINISHED'}
+
+
 class BLENDINI_OT_houdini_theme(bpy.types.Operator):
     """Apply a Houdini-like color theme (grey gradient viewport, dark network editor)"""
     bl_idname = "blendini.houdini_theme"
@@ -582,6 +610,7 @@ class BLENDINI_PT_info(bpy.types.Panel):
         geo = info.get('geo')
         if geo is None:
             return
+        layout.operator("blendini.export_obj", icon='EXPORT')
         col = layout.column(align=True)
         col.label(text="Cook time: %.2f ms" % (info.get('time', 0.0) * 1000))
         col.label(text="%d points   %d primitives   %d vertices" % (geo.num_points, geo.num_prims, geo.num_vertices))
@@ -838,6 +867,7 @@ classes = (
     BLENDINI_OT_new_network,
     BLENDINI_OT_houdini_theme,
     BLENDINI_OT_houdini_layout,
+    BLENDINI_OT_export_obj,
     BLENDINI_OT_tab_menu,
     BLENDINI_PT_parameters,
     BLENDINI_PT_info,

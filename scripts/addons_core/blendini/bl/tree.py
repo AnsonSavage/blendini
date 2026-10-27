@@ -110,6 +110,8 @@ class BlendiniNodeBase:
 
     display_flag: BoolProperty(name="Display", default=False,
                                description="Display flag: this node's output is shown in the viewport")
+    template_flag: BoolProperty(name="Template", default=False, update=_request_cook,
+                                description="Template flag: show this node's geometry as a wireframe guide")
     text: PointerProperty(name="Code Text", type=bpy.types.Text, update=_request_cook,
                           description="Text datablock holding the VEX code (edit in the Text Editor)")
     spare: CollectionProperty(type=BlendiniSpareParm)
@@ -140,6 +142,7 @@ class BlendiniNodeBase:
     def copy(self, node):
         self.name = unique_node_name(self.id_data, self.sop_id)
         self.display_flag = False
+        self.template_flag = False
         if self.text is not None:
             self.text = None
 
