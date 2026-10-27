@@ -679,8 +679,12 @@ class RBDSolverSOP(SOP):
 
     def cook(self, inputs, p, ctx):
         from ..core.geometry import merge
+        from ..core.instances import unpack
         from .modify import split_pieces
         geo = _in(inputs, 0)
+        if geo.instances:
+            # Packed pieces (Pack / Assemble) are simulated as their real geometry.
+            geo = unpack(geo)
         colliders = _in(inputs, 1) if len(inputs) > 1 and inputs[1] is not None else None
         state = ctx.state
         frame = int(round(ctx.frame))
