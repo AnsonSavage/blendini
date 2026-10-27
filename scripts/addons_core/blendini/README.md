@@ -47,6 +47,8 @@ Or step by step:
    - *Blendini* tab → *Apply Houdini-like Theme* for the grey gradient viewport and a dark
      network editor. *Houdini-like Layout* splits the screen into viewport + network +
      spreadsheet.
+   - **N** sidebar → **Spreadsheet** tab: Houdini's Geometry Spreadsheet for the *active*
+     node (points / vertices / primitives / detail, attributes and groups).
    - Viewport display of point numbers, primitive numbers and normals: the *Blendini* tab of
      the node editor, or the 3D viewport's sidebar.
 5. On a wrangle, click **Edit**. The VEX code opens in a Text Editor, with C-like syntax
@@ -180,5 +182,5 @@ there is no Python SOP.
 
 ## Not done yet (ideas)
 
-A geometry spreadsheet that shows groups, NURBS/curves, volumes/VDB,
+NURBS/curves, volumes/VDB,
 a DOP context, and a multi-line code editor inside the parameter pane.

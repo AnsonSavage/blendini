@@ -97,6 +97,11 @@ class BlendiniNodeTree(bpy.types.NodeTree):
                                description="Display normals in the viewport")
     normal_scale: FloatProperty(name="Normal Scale", default=1.0, min=0.0, soft_max=10.0,
                                 update=lambda s, c: _redraw_views())
+    sheet_class: EnumProperty(name="Class", items=[
+        ('point', "Points", ""), ('vertex', "Vertices", ""), ('prim', "Primitives", ""), ('detail', "Detail", ""),
+    ])
+    sheet_offset: IntProperty(name="Start", default=0, min=0)
+    sheet_rows: IntProperty(name="Rows", default=25, min=1, max=200)
     show_parms_in_nodes: BoolProperty(name="Show Parameters on Nodes", default=False,
                                       description="Draw parameters inside the nodes as well as in the Parameters pane")
 

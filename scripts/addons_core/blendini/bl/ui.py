@@ -645,6 +645,73 @@ class BLENDINI_PT_info(bpy.types.Panel):
                     col.label(text=line)
 
 
+def _fmt_cell(v):
+    import numpy as np
+    if isinstance(v, np.ndarray):
+        if v.ndim == 0:
+            return _fmt_cell(v.item())
+        return " ".join(_fmt_cell(x) for x in v.ravel()[:16])
+    if isinstance(v, (float, np.floating)):
+        return "%.3f" % v
+    if isinstance(v, (bool, np.bool_)):
+        return "1" if v else "0"
+    return str(v)
+
+
+class BLENDINI_PT_spreadsheet(bpy.types.Panel):
+    """Geometry spreadsheet of the active node (Houdini's Geometry Spreadsheet)"""
+    bl_space_type = 'NODE_EDITOR'
+    bl_region_type = 'UI'
+    bl_category = "Spreadsheet"
+    bl_label = "Geometry Spreadsheet"
+
+    @classmethod
+    def poll(cls, context):
+        return _in_blendini_tree(context) and context.space_data.edit_tree is not None
+
+    def draw(self, context):
+        import numpy as np
+        layout = self.layout
+        tree, node = _active_node(context)
+        tree = context.space_data.edit_tree
+        if node is None:
+            layout.label(text="Select a node")
+            return
+        geo = cook.node_geometry(node)
+        if geo is None:
+            layout.label(text="%s is not cooked" % node.name)
+            return
+        row = layout.row(align=True)
+        row.prop(tree, "sheet_class", expand=True)
+        row = layout.row(align=True)
+        row.prop(tree, "sheet_offset")
+        row.prop(tree, "sheet_rows")
+        cls = tree.sheet_class
+        n = geo.count(cls)
+        layout.label(text="%s: %d %s" % (node.name, n, cls + ("s" if cls != 'detail' else "")))
+        cols = [(name, arr) for name, arr in geo.attribs[cls].items() if not name.startswith('__')]
+        groups = list(geo.groups.get(cls, {}).items()) if cls in ('point', 'prim') else []
+        if cls == 'vertex':
+            cols = [("point", geo.vtx_point)] + cols
+        if cls == 'prim':
+            cols = [("size", geo.prim_sizes())] + cols
+        start = min(tree.sheet_offset, max(n - 1, 0))
+        stop = min(start + tree.sheet_rows, n)
+        box = layout.box()
+        flow = box.grid_flow(row_major=True, columns=1 + len(cols) + len(groups), even_columns=False, align=True)
+        flow.label(text="#")
+        for name, arr in cols:
+            flow.label(text=name)
+        for name, g in groups:
+            flow.label(text="grp:" + name)
+        for i in range(start, stop):
+            flow.label(text=str(i))
+            for name, arr in cols:
+                flow.label(text=_fmt_cell(arr[i]) if i < len(arr) else "")
+            for name, g in groups:
+                flow.label(text="1" if g[i] else "0")
+
+
 class BLENDINI_PT_network(bpy.types.Panel):
     bl_space_type = 'NODE_EDITOR'
     bl_region_type = 'UI'
@@ -872,6 +939,7 @@ classes = (
     BLENDINI_PT_parameters,
     BLENDINI_PT_info,
     BLENDINI_PT_network,
+    BLENDINI_PT_spreadsheet,
     BLENDINI_PT_view3d,
     BLENDINI_MT_tab,
 ) + tuple(CATEGORY_MENUS)
