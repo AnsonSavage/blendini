@@ -251,5 +251,53 @@ class TestSops(unittest.TestCase):
         self.assertEqual(len(np.unique(out.attribs['prim']['class'])), 3)
 
 
+class TestMoreSops(unittest.TestCase):
+    def test_pcfilter_smooths(self):
+        g = cook_sop('pointwrangle', [_grid(9)], snippet='f@v = @ptnum % 2;')
+        out, _ = _wrangle('int h = pcopen(0, "P", @P, 0.6, 20); f@s = pcfilter(h, "v"); i@n = pcnumfound(h);', g)
+        s = out.attribs['point']['s']
+        self.assertTrue(np.all((s > 0) & (s < 1)))
+        self.assertTrue(np.all(out.attribs['point']['n'] > 1))
+
+    def test_sweep_outward(self):
+        s = cook_sop('sweep', [cook_sop('line', points=5)], endcaps=False)
+        c = s.prim_centers()
+        c[:, 1] = 0
+        self.assertTrue(np.all(np.sum(s.prim_normals() * c, axis=1) > 0))
+
+    def test_lsystem(self):
+        geo = cook_sop('lsystem', generations=3)
+        self.assertGreater(geo.num_prims, 1)
+        self.assertGreater(geo.P[:, 1].max(), 0)
+
+    def test_pack_unpack_matches_copy(self):
+        pts = cook_sop('pointwrangle', [_grid(3)], snippet='f@pscale = 0.5 + @ptnum * 0.1;')
+        packed = cook_sop('copytopoints', [cook_sop('box'), pts], pack=True)
+        self.assertEqual(packed.num_points, 9)
+        moved = cook_sop('xform', [packed], r=(0.0, 45.0, 0.0), t=(1.0, 0.0, 0.0))
+        real = cook_sop('xform', [cook_sop('copytopoints', [cook_sop('box'), pts])], r=(0.0, 45.0, 0.0),
+                        t=(1.0, 0.0, 0.0))
+        unpacked = cook_sop('unpack', [moved])
+        np.testing.assert_allclose(np.sort(unpacked.P, axis=0), np.sort(real.P, axis=0), atol=1e-9)
+
+    def test_split_pieces(self):
+        from blendini.sops.modify import split_pieces
+        three = cook_sop('copyxform', [cook_sop('box')], ncy=3, t=(3.0, 0.0, 0.0))
+        pieces = split_pieces(three, 'class')
+        self.assertEqual(len(pieces), 3)
+        self.assertTrue(all(p.num_points == 8 for p in pieces))
+
+    def test_obj_roundtrip(self):
+        import os
+        import tempfile
+        from blendini.sops.modify import write_obj, read_obj
+        geo = merge([cook_sop('sphere'), cook_sop('line', points=4)])
+        path = os.path.join(tempfile.mkdtemp(), 'x.obj')
+        write_obj(geo, path)
+        back = read_obj(path)
+        self.assertEqual((back.num_points, back.num_prims), (geo.num_points, geo.num_prims))
+        np.testing.assert_allclose(back.P, geo.P, atol=1e-5)
+
+
 if __name__ == '__main__':
     unittest.main()

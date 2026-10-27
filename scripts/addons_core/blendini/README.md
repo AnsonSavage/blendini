@@ -115,6 +115,7 @@ Builtins (partial list):
   isvalidindex`.
 - Strings: `sprintf printf itoa atof atoi strlen concat startswith endswith toupper tolower`.
 - Channels: `ch chf chi chv chs chramp`, backed by spare parameters. Ramps are curve widgets.
+- Point clouds: `pcopen pcfilter pcnumfound pcclose pcfind`.
 - Closest point queries: `xyzdist` (with `prim`/`uv` output arguments), `primuv`, `minpos`, using Blender's BVH tree.
 - Constants from `math.h`: `M_PI`, `M_TWO_PI`, `M_E`, `FLT_MAX` and others.
 

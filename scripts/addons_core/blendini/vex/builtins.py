@@ -1747,3 +1747,62 @@ def _join(I, args, mask, hint):
     arr = full(args[0], n)
     sep = full(args[1], n) if len(args) > 1 else np.full(n, ' ', dtype=object)
     return V('string', np.array([sep[i].join(str(x) for x in arr[i]) for i in range(n)], dtype=object))
+
+
+# ----------------------------------------------------------------------------
+# Point clouds (pcopen / pcfilter)
+
+
+@builtin('pcopen')
+def _pcopen(I, args, mask, hint):
+    # pcopen(geo, "P", pos, radius, maxpoints)
+    geo = _geo(I, args[0])
+    n = I.n
+    pos = full(convert(args[2], 'vector'), n)
+    radius = full(convert(args[3], 'float'), n)
+    maxpts = full(convert(args[4], 'int'), n) if len(args) > 4 else np.full(n, 1 << 30)
+    res = _near_search(geo.P, pos, radius, np.minimum(maxpts, geo.num_points), np.nonzero(mask)[0],
+                       _kdtree(I, geo.P))
+    handles = I.ctx.cache.setdefault('pc_handles', [])
+    handles.append((geo, res, pos, radius))
+    return const('int', len(handles))
+
+
+def _pc_handle(I, v):
+    h = _uniform_int(v)
+    handles = I.ctx.cache.get('pc_handles', [])
+    if not 1 <= h <= len(handles):
+        raise VexError("Invalid point cloud handle")
+    return handles[h - 1]
+
+
+@builtin('pcnumfound')
+def _pcnumfound(I, args, mask, hint):
+    geo, res, pos, radius = _pc_handle(I, args[0])
+    return V('int', np.array([len(r) for r in res], dtype=np.int64))
+
+
+@builtin('pcfilter')
+def _pcfilter(I, args, mask, hint):
+    """Weighted average of an attribute over the found points (weights fall off with distance)."""
+    geo, res, pos, radius = _pc_handle(I, args[0])
+    name = _uniform_str(args[1])
+    arr = geo.P if name == 'P' else geo.attribs['point'].get(name)
+    if arr is None or arr.dtype == object:
+        return zeros(hint if hint in SHAPES else 'float', I.n)
+    t = type_of_array(arr)
+    out = np.zeros((I.n,) + arr.shape[1:])
+    for i in np.nonzero(mask)[0]:
+        idx = res[i]
+        if len(idx) == 0:
+            continue
+        d = np.linalg.norm(geo.P[idx] - pos[i], axis=1)
+        r = max(float(radius[i]), 1e-12)
+        w = np.maximum(1.0 - (d / r) ** 2, 0.0) ** 3 + 1e-9
+        out[i] = np.tensordot(w / w.sum(), arr[idx].astype(np.float64), axes=1)
+    return V(t if t != 'int' else 'float', out)
+
+
+@builtin('pcclose')
+def _pcclose(I, args, mask, hint):
+    return None
