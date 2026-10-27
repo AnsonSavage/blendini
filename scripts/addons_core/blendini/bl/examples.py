@@ -219,8 +219,9 @@ def build_examples():
     w = _node(t, 'detailwrangle', (0, 200), snippet=SPIRAL)
     _spare(w, count=200, turns=4.0)
     rs = _node(t, 'resample', (0, 0), length=0.05)
-    _chain(t, [w, rs])
-    _finish(t, w)
+    sw = _node(t, 'sweep', (0, -200), radius=0.08, scaleramp=0.2, cols=10)
+    _chain(t, [w, rs, sw])
+    _finish(t, sw)
     trees.append(t)
     return trees
 

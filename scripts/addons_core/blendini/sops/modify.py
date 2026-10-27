@@ -615,6 +615,7 @@ class ResampleSOP(SOP):
         polys_open = []
         all_P = []
         all_u = []
+        attr_parts = {}
         offset = 0
         for i in range(geo.num_prims):
             pts = geo.prim_points(i)
@@ -635,6 +636,13 @@ class ResampleSOP(SOP):
             if closed:
                 t = t[:-1]
             newP = np.stack([np.interp(t, cum, P[:, k]) for k in range(3)], axis=1)
+            src_pts = np.concatenate([pts, pts[:1]]) if closed else pts
+            for name, arr in geo.attribs[POINT].items():
+                if name == 'P' or arr.dtype == object:
+                    continue
+                vals = arr[src_pts].astype(np.float64).reshape(len(src_pts), -1)
+                interp = np.stack([np.interp(t, cum, vals[:, k]) for k in range(vals.shape[1])], axis=1)
+                attr_parts.setdefault(name, []).append(interp.reshape((len(t),) + arr.shape[1:]))
             all_P.append(newP)
             all_u.append(t / total)
             idx = list(range(offset, offset + len(newP)))
@@ -646,6 +654,9 @@ class ResampleSOP(SOP):
             out.add_prims(polys_open, closed=False)
             if p.curveu:
                 out.attribs[POINT]['curveu'] = np.concatenate(all_u)
+            for name, parts in attr_parts.items():
+                if len(parts) == len(all_P):
+                    out.attribs[POINT][name] = np.concatenate(parts)
         return out
 
 
@@ -1537,6 +1548,7 @@ class SweepSOP(SOP):
         caps = []
         offset = 0
         u_attr = []
+        attr_parts = {}
         for ci in range(curves.num_prims):
             pts = curves.prim_points(ci)
             n = len(pts)
@@ -1557,6 +1569,10 @@ class SweepSOP(SOP):
                     * scale[:, None, None])
             allP.append(ring.reshape(-1, 3))
             u_attr.append(np.repeat(t, k))
+            for name, arr in curves.attribs[POINT].items():
+                if name in ('P', 'N', 'pscale', 'width') or arr.dtype == object:
+                    continue
+                attr_parts.setdefault(name, []).append(np.repeat(arr[pts], k, axis=0))
             rows = n if closed else n - 1
             cols = k if sec_closed else k - 1
             for r in range(rows):
@@ -1576,6 +1592,9 @@ class SweepSOP(SOP):
         if caps:
             out.add_prims(caps)
         out.attribs[POINT]['curveu'] = np.concatenate(u_attr)
+        for name, parts in attr_parts.items():
+            if len(parts) == len(allP):
+                out.attribs[POINT][name] = np.concatenate(parts)
         return out
 
 
