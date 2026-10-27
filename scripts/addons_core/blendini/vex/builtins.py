@@ -22,6 +22,8 @@ from ..core import noise as _noise
 FUNCTIONS = {}
 # Functions that modify their first argument: they return (new_first_arg, result).
 INPLACE = set()
+# Functions with output arguments: they return (result, {arg_index: value}).
+OUTARGS = set()
 
 
 def builtin(*names, inplace=False):
@@ -1478,3 +1480,151 @@ def _primarea(I, args, mask, hint):
     areas = geo.prim_areas()
     ok = (p >= 0) & (p < len(areas))
     return V('float', np.where(ok, areas[np.clip(p, 0, max(len(areas) - 1, 0))] if len(areas) else 0.0, 0.0))
+
+
+# ----------------------------------------------------------------------------
+# Closest point queries (Blender's BVH tree as the backend)
+
+
+def _bvh(I, geo):
+    key = ('bvh', id(geo), geo.num_points, geo.num_prims)
+    cache = I.ctx.cache
+    if key not in cache:
+        tris, tri_prim = geo.triangulate_flat()
+        tree = None
+        if len(tris):
+            try:
+                from mathutils.bvhtree import BVHTree
+                tree = BVHTree.FromPolygons(geo.P.tolist(), tris.tolist(), all_triangles=True)
+            except ImportError:
+                tree = None
+        cache[key] = (tree, tris, tri_prim)
+    return cache[key]
+
+
+def _closest(I, geo, pos, mask, maxdist=None):
+    """Closest surface points. Returns (location (n,3), prim (n,), dist (n,))."""
+    n = len(pos)
+    loc = np.zeros((n, 3))
+    prim = np.full(n, -1, dtype=np.int64)
+    dist = np.full(n, -1.0)
+    tree, tris, tri_prim = _bvh(I, geo)
+    lanes = np.nonzero(mask)[0]
+    if tree is not None:
+        plist = pos.tolist()
+        for i in lanes.tolist():
+            hit = tree.find_nearest(plist[i], maxdist[i] if maxdist is not None else 1e30)
+            if hit[0] is not None:
+                loc[i] = hit[0]
+                prim[i] = tri_prim[hit[2]]
+                dist[i] = hit[3]
+        return loc, prim, dist
+    # Fallback: nearest triangle centroid.
+    if len(tris):
+        cent = geo.P[tris].mean(axis=1)
+        for i in lanes.tolist():
+            d = np.linalg.norm(cent - pos[i], axis=1)
+            j = int(np.argmin(d))
+            loc[i] = cent[j]
+            prim[i] = tri_prim[j]
+            dist[i] = d[j]
+    return loc, prim, dist
+
+
+def _prim_weights(geo, prim, uv):
+    """Point indices and weights for parametric (u, v) on primitives (triangles / quads)."""
+    out = []
+    for p, (u, v) in zip(prim.tolist(), uv[:, :2].tolist()):
+        if p < 0 or p >= geo.num_prims:
+            out.append((np.zeros(0, np.int64), np.zeros(0)))
+            continue
+        pts = geo.prim_points(p)
+        if len(pts) == 3:
+            w = np.array([1 - u - v, u, v])
+        elif len(pts) == 4:
+            w = np.array([(1 - u) * (1 - v), u * (1 - v), u * v, (1 - u) * v])
+        else:
+            w = np.full(len(pts), 1.0 / max(len(pts), 1))
+        out.append((pts, w))
+    return out
+
+
+def _solve_uv(geo, prim, loc):
+    uv = np.zeros((len(prim), 3))
+    for i, (p, x) in enumerate(zip(prim.tolist(), loc)):
+        if p < 0:
+            continue
+        pts = geo.prim_points(p)
+        Q = geo.P[pts]
+        if len(pts) == 3:
+            A = np.stack([Q[1] - Q[0], Q[2] - Q[0]], axis=1)
+            sol, *_ = np.linalg.lstsq(A, x - Q[0], rcond=None)
+            uv[i, :2] = sol
+        elif len(pts) == 4:
+            u = v = 0.5
+            for _ in range(8):
+                Pp = (1 - u) * (1 - v) * Q[0] + u * (1 - v) * Q[1] + u * v * Q[2] + (1 - u) * v * Q[3]
+                du = -(1 - v) * Q[0] + (1 - v) * Q[1] + v * Q[2] - v * Q[3]
+                dv = -(1 - u) * Q[0] - u * Q[1] + u * Q[2] + (1 - u) * Q[3]
+                J = np.stack([du, dv], axis=1)
+                step, *_ = np.linalg.lstsq(J, x - Pp, rcond=None)
+                u, v = u + step[0], v + step[1]
+                if abs(step[0]) + abs(step[1]) < 1e-9:
+                    break
+            uv[i, :2] = (u, v)
+    return uv
+
+
+@builtin('xyzdist')
+def _xyzdist(I, args, mask, hint):
+    geo = _geo(I, args[0])
+    n = I.n
+    pos = full(convert(args[1], 'vector'), n)
+    maxdist = full(convert(args[4], 'float'), n) if len(args) > 4 else None
+    loc, prim, dist = _closest(I, geo, pos, mask, maxdist)
+    uv = _solve_uv(geo, prim, loc) if len(args) > 3 else np.zeros((n, 3))
+    return V('float', dist), {2: V('int', prim), 3: V('vector', uv)}
+
+
+OUTARGS.add('xyzdist')
+
+
+@builtin('minpos')
+def _minpos(I, args, mask, hint):
+    geo = _geo(I, args[0])
+    pos = full(convert(args[1], 'vector'), I.n)
+    loc, prim, dist = _closest(I, geo, pos, mask)
+    return V('vector', np.where((prim >= 0)[:, None], loc, pos))
+
+
+@builtin('primuv')
+def _primuv(I, args, mask, hint):
+    from ..core.geometry import POINT, PRIM, VERTEX
+    geo = _geo(I, args[0])
+    name = _uniform_str(args[1])
+    n = I.n
+    prim = full(convert(args[2], 'int'), n)
+    uv = full(convert(args[3], 'vector'), n)
+    if name == 'P':
+        arr, cls = geo.P, POINT
+    else:
+        cls = geo.find_attrib_class(name, (POINT, VERTEX, PRIM))
+        arr = geo.attribs[cls][name] if cls else None
+    if arr is None or arr.dtype == object:
+        return zeros(hint if hint in SHAPES else 'float', n)
+    t = type_of_array(arr)
+    out = np.zeros((n,) + arr.shape[1:])
+    if cls == PRIM:
+        ok = (prim >= 0) & (prim < geo.num_prims)
+        out[ok] = arr[prim[ok]]
+        return V(t if t != 'int' else 'float', out)
+    for i, (pts, w) in enumerate(_prim_weights(geo, prim, uv)):
+        if len(pts) == 0:
+            continue
+        if cls == VERTEX:
+            start = geo.prim_start[prim[i]]
+            vals = arr[start:start + len(pts)]
+        else:
+            vals = arr[pts]
+        out[i] = np.tensordot(w, vals, axes=1)
+    return V(t if t != 'int' else 'float', out)

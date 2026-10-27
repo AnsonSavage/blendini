@@ -50,7 +50,7 @@ class Interpreter:
         self.functions = program.functions
         self.ctx = ctx
         self.n = n
-        self.scopes = [{}]
+        self.scopes = [_constants(), {}]
         self.attrs = {}       # binding name -> V
         self.attr_types = {}  # binding name -> type
         self.written = set()
@@ -497,6 +497,12 @@ class Interpreter:
             # Functions like append() / rotate() modify their first argument.
             new_val, result = result
             self.store(node.args[0], new_val, mask)
+        elif name in _builtins.OUTARGS:
+            # Functions with output parameters, e.g. xyzdist(geo, pos, &prim, &uv).
+            result, outs = result
+            for idx, val in outs.items():
+                if idx < len(node.args) and node.args[idx].kind in ('var', 'attr', 'member', 'index'):
+                    self.store(node.args[idx], val, mask)
         if result is None:
             return const('int', 0)
         return result
@@ -509,7 +515,7 @@ class Interpreter:
             v = convert(self.ev(arg, mask, hint=pt), pt)
             scope[pname] = V(pt, np.array(full(v, self.n), copy=True))
         saved = self.scopes
-        self.scopes = [scope]
+        self.scopes = [saved[0], scope]
         f = _Func(fn.rtype, self.n)
         self.funcs.append(f)
         if len(self.funcs) > 200:
@@ -530,6 +536,22 @@ class Interpreter:
 
 # ----------------------------------------------------------------------
 # Helpers
+
+def _constants():
+    """Constants from Houdini's math.h (which wrangles include by default)."""
+    import math
+    vals = {
+        'M_PI': math.pi, 'PI': math.pi, 'M_PI_2': math.pi / 2, 'M_PI_4': math.pi / 4, 'M_TWO_PI': 2 * math.pi,
+        'M_1_PI': 1 / math.pi, 'M_2_PI': 2 / math.pi, 'M_E': math.e, 'M_SQRT2': math.sqrt(2),
+        'M_SQRT1_2': math.sqrt(0.5), 'M_LN2': math.log(2), 'M_LN10': math.log(10), 'M_LOG2E': 1 / math.log(2),
+        'M_LOG10E': 1 / math.log(10), 'FLT_MAX': 3.402823466e+38, 'FLT_MIN': 1.175494351e-38,
+        'FLT_EPSILON': 1.192092896e-07,
+    }
+    out = {k: const('float', v) for k, v in vals.items()}
+    out['INT_MAX'] = const('int', 2147483647)
+    out['INT_MIN'] = const('int', -2147483648)
+    return out
+
 
 def _swizzle(name, t, line):
     if t not in VECTORS:

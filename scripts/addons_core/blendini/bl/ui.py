@@ -420,6 +420,54 @@ def show_tree_in_editor(context, tree):
     space.show_region_ui = True
 
 
+class BLENDINI_OT_houdini_layout(bpy.types.Operator):
+    """Arrange the current screen like Houdini: viewport left, network editor right, spreadsheet below"""
+    bl_idname = "blendini.houdini_layout"
+    bl_label = "Houdini-like Layout"
+
+    def execute(self, context):
+        screen = context.screen
+        if screen is None:
+            return {'CANCELLED'}
+        tree = None
+        obj = context.active_object
+        if obj is not None and obj.get("blendini_tree"):
+            tree = bpy.data.node_groups.get(obj["blendini_tree"])
+        if tree is None:
+            trees = cook.all_trees()
+            tree = trees[0] if trees else None
+        if any(a.type == 'NODE_EDITOR' and getattr(a.spaces.active, 'tree_type', '') == TREE_ID for a in screen.areas):
+            node_area = next(a for a in screen.areas if a.type == 'NODE_EDITOR')
+        else:
+            view3d = max((a for a in screen.areas if a.type == 'VIEW_3D'), key=lambda a: a.width * a.height, default=None)
+            if view3d is None:
+                self.report({'WARNING'}, "No 3D Viewport to split")
+                return {'CANCELLED'}
+            before = set(screen.areas[:])
+            with context.temp_override(area=view3d):
+                bpy.ops.screen.area_split(direction='VERTICAL', factor=0.55)
+            new = [a for a in screen.areas if a not in before]
+            if not new:
+                return {'CANCELLED'}
+            node_area = new[0]
+            if node_area.x < view3d.x:
+                node_area, view3d = view3d, node_area
+                view3d.type = 'VIEW_3D'
+            node_area.type = 'NODE_EDITOR'
+        space = node_area.spaces.active
+        space.tree_type = TREE_ID
+        if tree is not None:
+            space.node_tree = tree
+        space.show_region_ui = True
+        # The timeline becomes the geometry spreadsheet (Houdini's Geometry Spreadsheet pane).
+        for area in screen.areas:
+            if area.type in ('DOPESHEET_EDITOR', 'TIMELINE'):
+                area.type = 'SPREADSHEET'
+                break
+        _show_attribute_colors(context)
+        return {'FINISHED'}
+
+
 class BLENDINI_OT_houdini_theme(bpy.types.Operator):
     """Apply a Houdini-like color theme (grey gradient viewport, dark network editor)"""
     bl_idname = "blendini.houdini_theme"
@@ -575,6 +623,7 @@ class BLENDINI_PT_network(bpy.types.Panel):
         layout.prop(tree, "show_parms_in_nodes")
         layout.operator("blendini.cook", icon='FILE_REFRESH')
         layout.operator("blendini.houdini_theme", icon='COLOR')
+        layout.operator("blendini.houdini_layout", icon='WORKSPACE')
         layout.operator("blendini.load_examples", icon='PRESET')
         box = layout.box()
         box.label(text="Hotkeys", icon='EVENT_TAB')
@@ -651,6 +700,7 @@ def draw_view3d_add(self, context):
     self.layout.separator()
     self.layout.operator(BLENDINI_OT_new_network.bl_idname, icon='MESH_ICOSPHERE')
     self.layout.operator("blendini.load_examples", text="Blendini Examples", icon='PRESET')
+    self.layout.operator("blendini.houdini_layout", text="Blendini Houdini Layout", icon='WORKSPACE')
 
 
 # ----------------------------------------------------------------------------
@@ -732,6 +782,7 @@ classes = (
     BLENDINI_OT_remove_spare_parm,
     BLENDINI_OT_new_network,
     BLENDINI_OT_houdini_theme,
+    BLENDINI_OT_houdini_layout,
     BLENDINI_OT_tab_menu,
     BLENDINI_PT_parameters,
     BLENDINI_PT_info,

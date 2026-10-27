@@ -149,16 +149,20 @@ def cook_node(node, ctx_base, visiting=None):
         sop = node.sop
         inputs = []
         input_sigs = []
+        upstream_ctx = ctx_base
+        if sop.id == 'timeshift' and not node.mute:
+            f = node.p_frame if node.p_mode == 'frame' else ctx_base['frame'] + node.p_frame
+            upstream_ctx = dict(ctx_base, frame=float(f), time=float(f - 1) / ctx_base['fps'])
         for sock in node.inputs:
             ups = _input_nodes(sock)
             if sock.is_multi_input:
                 for up in ups:
-                    g, s = cook_node(up, ctx_base, visiting)
+                    g, s = cook_node(up, upstream_ctx, visiting)
                     inputs.append(g)
                     input_sigs.append(s)
             else:
                 if ups:
-                    g, s = cook_node(ups[0], ctx_base, visiting)
+                    g, s = cook_node(ups[0], upstream_ctx, visiting)
                 else:
                     g, s = None, None
                 inputs.append(g)

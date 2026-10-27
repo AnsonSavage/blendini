@@ -354,3 +354,46 @@ class BlenderModifierSOP(SOP):
                 except (AttributeError, TypeError, ValueError) as ex:
                     raise CookError("Can't set %s: %s" % (key, ex))
         return apply_modifier(geo, p.modtype, settings)
+
+
+@register_sop
+class FontSOP(SOP):
+    id = 'font'
+    label = "Font"
+    category = 'Primitive'
+    inputs = 0
+    icon = 'FONT_DATA'
+    parms = (
+        Parm('text', "Text", 'string', default="Blendini"),
+        Parm('fontsize', "Font Size", 'float', default=1.0, min=0.01, soft_max=10),
+        Parm('t', "Translate", 'vector'),
+        Parm('halign', "Horizontal Alignment", 'enum', items=[('CENTER', "Center", ""), ('LEFT', "Left", ""),
+                                                               ('RIGHT', "Right", "")]),
+        Parm('extrude', "Extrude", 'float', default=0.0, min=0, soft_max=1),
+        Parm('resolution', "Curve Resolution", 'int', default=4, min=1, max=32),
+    )
+
+    def cook(self, inputs, p, ctx):
+        from ..bl.mesh_io import mesh_to_geo
+        coll = _temp_collection()
+        curve = bpy.data.curves.new("_blendini_font", 'FONT')
+        curve.body = p.text or " "
+        curve.size = p.fontsize
+        curve.align_x = p.halign
+        curve.extrude = p.extrude
+        curve.resolution_u = p.resolution
+        curve.fill_mode = 'BOTH' if p.extrude else 'FRONT'
+        obj = bpy.data.objects.new("_blendini_font", curve)
+        coll.objects.link(obj)
+        try:
+            depsgraph = bpy.context.evaluated_depsgraph_get()
+            mesh = bpy.data.meshes.new_from_object(obj.evaluated_get(depsgraph), depsgraph=depsgraph)
+            try:
+                geo = mesh_to_geo(mesh)
+            finally:
+                bpy.data.meshes.remove(mesh)
+        finally:
+            bpy.data.objects.remove(obj)
+            bpy.data.curves.remove(curve)
+        geo.P = geo.P + np.asarray(p.t)
+        return geo

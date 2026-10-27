@@ -1111,3 +1111,114 @@ class PolyWireSOP(SOP):
             src = np.concatenate([np.repeat(E[:, :1], k, axis=1), np.repeat(E[:, 1:], k, axis=1)], axis=1).ravel()
             out.attribs[POINT][name] = arr[src]
         return out
+
+
+@register_sop
+class AttribTransferSOP(SOP):
+    id = 'attribtransfer'
+    label = "Attribute Transfer"
+    category = 'Attribute'
+    inputs = 2
+    input_labels = ("Destination", "Source")
+    icon = 'UV_SYNC_SELECT'
+    parms = (
+        Parm('pointattriblist', "Point Attributes", 'string', default='Cd'),
+        Parm('thresholddist', "Distance Threshold", 'float', default=0.1, min=0, soft_max=10),
+        Parm('blendwidth', "Blend Width", 'float', default=0.2, min=0, soft_max=10),
+    )
+
+    def cook(self, inputs, p, ctx):
+        import fnmatch
+        from ..core.spatial import nearest
+        dst = _in(inputs, 0).copy()
+        src = _in(inputs, 1)
+        if dst.num_points == 0 or src.num_points == 0:
+            return dst
+        maxd = p.thresholddist + p.blendwidth
+        idx, dist = nearest(src.P, dst.P, maxd)
+        hit = idx >= 0
+        if p.blendwidth > 0:
+            w = np.clip(1.0 - (dist - p.thresholddist) / p.blendwidth, 0, 1)
+        else:
+            w = (dist <= p.thresholddist).astype(np.float64)
+        w[~hit] = 0
+        pats = p.pointattriblist.split()
+        for name, arr in src.attribs[POINT].items():
+            if name == 'P' or arr.dtype == object or not any(fnmatch.fnmatchcase(name, pt) for pt in pats):
+                continue
+            cur = dst.attribs[POINT].get(name)
+            if cur is None or cur.shape[1:] != arr.shape[1:]:
+                cur = np.zeros((dst.num_points,) + arr.shape[1:])
+            cur = cur.astype(np.float64)
+            vals = arr[np.clip(idx, 0, None)].astype(np.float64)
+            ww = w.reshape((-1,) + (1,) * (arr.ndim - 1))
+            dst.attribs[POINT][name] = (cur + (vals - cur) * ww).astype(arr.dtype if arr.dtype.kind == 'f' else np.float64)
+        return dst
+
+
+@register_sop
+class RaySOP(SOP):
+    id = 'ray'
+    label = "Ray"
+    category = 'Manipulate'
+    inputs = 2
+    input_labels = ("Geometry to Project", "Collision Geometry")
+    icon = 'LIGHT_SUN'
+    parms = (
+        Parm('group', "Group", 'string'),
+        Parm('method', "Method", 'enum', items=[('minimum', "Minimum Distance", ""), ('project', "Projection", "")]),
+        Parm('dirmethod', "Direction From", 'enum', items=[('vector', "Vector", ""), ('normal', "Normal (N)", "")],
+             hide_when={'method': 'minimum'}),
+        Parm('dir', "Ray Direction", 'vector', default=(0.0, -1.0, 0.0), hide_when={'method': 'minimum'}),
+        Parm('scale', "Scale", 'float', default=1.0, min=0, max=1),
+        Parm('putnml', "Point Intersection Normal", 'bool', default=False),
+        Parm('putdist', "Point Intersection Distance", 'bool', default=False),
+    )
+
+    def cook(self, inputs, p, ctx):
+        from ..core.spatial import ray_cast, closest
+        geo = _in(inputs, 0).copy()
+        col = _in(inputs, 1)
+        mask = _point_mask_from_group(geo, p.group)
+        idx = np.nonzero(mask)[0]
+        P = geo.P[idx]
+        if p.method == 'minimum':
+            loc, nrm, prim, dist = closest(col, P)
+            hit = prim >= 0
+        else:
+            if p.dirmethod == 'normal':
+                N = geo.attribs[POINT]['N'] if geo.has_attrib(POINT, 'N') else geo.point_normals()
+                D = N[idx]
+            else:
+                D = np.broadcast_to(np.asarray(p.dir, dtype=np.float64), P.shape)
+            hit, loc, nrm, prim, dist = ray_cast(col, P, D)
+        newP = geo.P.copy()
+        newP[idx] = np.where(hit[:, None], P + (loc - P) * p.scale, P)
+        geo.P = newP
+        if p.putnml:
+            N = geo.add_attrib(POINT, 'N', shape=(3,))
+            N[idx[hit]] = nrm[hit]
+        if p.putdist:
+            d = geo.add_attrib(POINT, 'dist', shape=())
+            d[idx] = dist
+        geo.groups[POINT]['rayHitGroup'] = np.zeros(geo.num_points, dtype=bool)
+        geo.groups[POINT]['rayHitGroup'][idx[hit]] = True
+        return geo
+
+
+@register_sop
+class TimeShiftSOP(SOP):
+    id = 'timeshift'
+    label = "Time Shift"
+    category = 'Utility'
+    inputs = 1
+    icon = 'TIME'
+    description = "Cook the input at a different frame"
+    parms = (
+        Parm('mode', "Method", 'enum', items=[('frame', "Fixed Frame", ""), ('offset', "Frame Offset", "")]),
+        Parm('frame', "Frame", 'float', default=1.0),
+    )
+
+    def cook(self, inputs, p, ctx):
+        # The actual time change happens in the cook engine (inputs are cooked at another frame).
+        return _in(inputs)
