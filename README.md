@@ -13,6 +13,12 @@ motion tracking and video editing.
 
 ![Blender screenshot](https://code.blender.org/wp-content/uploads/2018/12/springrg.jpg "Blender screenshot")
 
+Blendini
+--------
+
+This fork ships **Blendini**, a Houdini-style procedural SOP network with a VEX wrangle that
+uses Blender as its backend. See [scripts/addons_core/blendini](scripts/addons_core/blendini/README.md).
+
 Project Pages
 -------------
 
