@@ -78,6 +78,17 @@ for (int i = 0; i < n; i++) {
 """
 
 
+PIECE = """\
+// Runs once per piece inside the For-Each block
+int it = detail(0, "iteration");
+vector c = getbbox_center(0);
+matrix3 m = ident();
+rotate(m, rand(it) * 0.8, normalize(set(rand(it + 1) - 0.5, 1, rand(it + 2) - 0.5)));
+@P = (@P - c) * m + c + set(0, rand(it + 3) * 0.6, 0);
+@Cd = set(rand(it), 0.5, 1 - rand(it));
+"""
+
+
 def _node(tree, sop_id, loc, **parms):
     node = tree.nodes.new(NODE_PREFIX + sop_id)
     node.location = loc
@@ -182,6 +193,17 @@ def build_examples():
     sol = _node(t, 'solverwrangle', (0, -200), snippet=PARTICLES_SOLVER)
     _chain(t, [grid, sc, w, sol])
     _finish(t, sol)
+    trees.append(t)
+
+    t = _new_tree("foreach", (60, 0, 0))
+    box = _node(t, 'box', (0, 600), size=(0.9, 0.9, 0.9))
+    cx = _node(t, 'copyxform', (0, 400), ncy=6, t=(1.0, 0.0, 0.0))
+    cy = _node(t, 'copyxform', (0, 200), ncy=6, t=(0.0, 0.0, 1.0))
+    begin = _node(t, 'foreach_begin', (0, 0))
+    w = _node(t, 'attribwrangle', (0, -200), snippet=PIECE)
+    end = _node(t, 'foreach_end', (0, -400))
+    _chain(t, [box, cx, cy, begin, w, end])
+    _finish(t, end)
     trees.append(t)
 
     t = _new_tree("spiral", (50, 0, 0))

@@ -1342,3 +1342,81 @@ class AttribNoiseSOP(SOP):
         return geo
 
     time_dependent = True
+
+
+# ----------------------------------------------------------------------------
+# For-Each loops (the cook engine in bl/cook.py drives the iterations)
+
+FOREACH_METHODS = [
+    ('piece', "By Pieces or Points", "Run once per connected piece / unique attribute value"),
+    ('feedback', "Fetch Feedback", "Run N times, feeding each iteration's result into the next"),
+]
+
+
+@register_sop
+class ForEachBeginSOP(SOP):
+    id = 'foreach_begin'
+    label = "Block Begin (For-Each)"
+    category = 'Utility'
+    inputs = 1
+    icon = 'LOOP_FORWARDS'
+    description = "Start of a For-Each block. Outputs the current piece (or feedback geometry)"
+
+    def cook(self, inputs, p, ctx):
+        return _in(inputs)
+
+
+@register_sop
+class ForEachEndSOP(SOP):
+    id = 'foreach_end'
+    label = "Block End (For-Each)"
+    category = 'Utility'
+    inputs = 1
+    icon = 'LOOP_BACK'
+    description = "End of a For-Each block. Merges (or feeds back) the results of every iteration"
+    parms = (
+        Parm('method', "Iteration Method", 'enum', items=FOREACH_METHODS),
+        Parm('attrib', "Piece Attribute", 'string', default='class', hide_when={'method': 'feedback'},
+             description="Primitive attribute defining pieces. Connected pieces are used when it doesn't exist"),
+        Parm('elemtype', "Piece Elements", 'enum', items=[('prim', "Primitives", ""), ('point', "Points", "")],
+             hide_when={'method': 'feedback'}),
+        Parm('iterations', "Iterations", 'int', default=5, min=0, soft_max=100),
+        Parm('maxpieces', "Max Pieces (0 = all)", 'int', default=0, min=0, hide_when={'method': 'feedback'}),
+    )
+
+    def cook(self, inputs, p, ctx):
+        return _in(inputs)
+
+
+def split_pieces(geo, attrib, elemtype='prim'):
+    """Split geometry into pieces: by primitive attribute value, connectivity, or single points."""
+    if elemtype == 'point':
+        pieces = []
+        for i in range(geo.num_points):
+            g = Geometry()
+            g.P = geo.P[i:i + 1]
+            for name, arr in geo.attribs[POINT].items():
+                if name != 'P':
+                    g.attribs[POINT][name] = arr[i:i + 1].copy()
+            g.attribs[DETAIL] = {k: v.copy() for k, v in geo.attribs[DETAIL].items()}
+            pieces.append(g)
+        return pieces
+    values = geo.attribs[PRIM].get(attrib) if attrib else None
+    if values is None or values.dtype == object and attrib not in geo.attribs[PRIM]:
+        conn = REGISTRY_COOK('connectivity', geo, attribname='__piece')
+        values = conn.attribs[PRIM]['__piece']
+    if values.ndim > 1:
+        values = values[:, 0]
+    pieces = []
+    for v in (list(dict.fromkeys(values.tolist())) if values.dtype == object else np.unique(values)):
+        g = geo.copy()
+        g.delete_prims(values != v)
+        g.delete_unused_points()
+        g.remove_attrib(PRIM, '__piece')
+        pieces.append(g)
+    return pieces
+
+
+def REGISTRY_COOK(sop_id, geo, **parms):
+    from . import cook_sop
+    return cook_sop(sop_id, [geo], **parms)

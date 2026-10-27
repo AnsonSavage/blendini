@@ -15,7 +15,7 @@ also plain Python + numpy, so it can be zipped and installed into a stock Blende
 1. Enable **Blendini** in *Preferences → Add-ons*.
 2. In the 3D viewport choose *Add → Blendini Geometry*. This creates `geo1` (an object
    plus its SOP network, like `/obj/geo1`) and opens the network in a node editor.
-3. Or use *Add → Blendini Examples* to build six example networks.
+3. Or use *Add → Blendini Examples* to build seven example networks.
 4. In the node editor:
    - **Tab**: Houdini-style TAB menu (start typing to search).
    - **R**: set the display flag on the active node.
@@ -36,14 +36,14 @@ Blender is Z-up and Houdini is Y-up. Output objects are rotated 90° around X so
 
 | Category  | SOPs |
 |-----------|------|
-| Primitive | Box, Grid, Sphere (UV / icosahedron), Tube, Torus, Circle, Line, Platonic Solids |
-| Manipulate| Transform, Mountain, Point Jitter, Peak, Smooth |
+| Primitive | Box, Grid, Sphere (UV / icosahedron), Tube, Torus, Circle, Line, Platonic Solids, Bound, Font\* |
+| Manipulate| Transform, Mountain, Point Jitter, Peak, Smooth, Ray\* |
 | Polygon   | Add, Fuse, Facet, Divide, Reverse, PolyExtrude, PolyWire, Resample, Subdivide\*, PolyBevel\*, Boolean\*, Remesh\*, PolyReduce\*, Clip\* |
-| Attribute | Attribute Create / Delete / Rename / Promote / Randomize, Color, Normal, Connectivity, Measure |
+| Attribute | Attribute Create / Delete / Rename / Promote / Randomize / Noise / Transfer, Color, Normal, Connectivity, Measure, UV Texture |
 | Group     | Group Create (pattern / bounding box / normal / random / `@expression`), Blast |
 | Copy      | Copy to Points (orient, N/up, pscale, scale), Copy and Transform, Scatter |
 | VEX       | Attribute Wrangle, **Point Wrangle**, Primitive Wrangle, Detail Wrangle, **Solver (VEX)** |
-| Utility   | Merge (multi-input), Switch, Null, Output, Sort |
+| Utility   | Merge (multi-input), Switch, Null, Output, Sort, Time Shift, **Block Begin / Block End (For-Each pieces or feedback)** |
 | Blender   | Object Merge, Solidify\*, **Blender Modifier\*** (any modifier, including Geometry Nodes groups) |
 
 \* These use Blender as the backend: the geometry passes through a real Blender modifier
@@ -94,7 +94,9 @@ Builtins (partial list):
 - Arrays: `len append push pop removeindex resize find sort argsort reverse array
   isvalidindex`.
 - Strings: `sprintf printf itoa atof atoi strlen concat startswith endswith toupper tolower`.
-- Channels: `ch chf chi chv chs` (backed by spare parameters).
+- Channels: `ch chf chi chv chs chramp`, backed by spare parameters. Ramps are curve widgets.
+- Closest point queries: `xyzdist` (with `prim`/`uv` output arguments), `primuv`, `minpos`, using Blender's BVH tree.
+- Constants from `math.h`: `M_PI`, `M_TWO_PI`, `M_E`, `FLT_MAX` and others.
 
 As in Houdini, reads with `point()` etc. see the **input** geometry. `@` writes and
 geometry edits are applied after the snippet finishes.
@@ -139,6 +141,5 @@ python -m unittest blendini.tests.test_blendini
 
 ## Not done yet (ideas)
 
-Packed primitives and instancing, For-Each loops, ramp parameters for `chramp`,
-`xyzdist`/`primuv`, a geometry spreadsheet that shows groups, NURBS/curves, volumes/VDB,
+Packed primitives and instancing, a geometry spreadsheet that shows groups, NURBS/curves, volumes/VDB,
 a DOP context, and a multi-line code editor inside the parameter pane.
