@@ -80,6 +80,20 @@ defaults, e.g. white for `Cd` and 1 for `pscale`.
 Blender is Z-up and Houdini is Y-up. Output objects are rotated 90° around X so
 `@P.y` stays "up" in your VEX. Object Merge converts the other way.
 
+## Your first network (the classic Houdini warm-up)
+
+1. *Add → Blendini Geometry* (or *File → New → Blendini*). Delete the starter nodes if you
+   like.
+2. **Tab** → type `grid` → Enter. Set *Rows/Columns* to 50.
+3. With the grid selected: **Tab** → `mountain`. It is wired in and gets the display flag.
+4. **Tab** → `scatter` (1000 points), then **Tab** → `point wrangle`. Pick *Random pscale
+   and orient* from the presets menu (or type your own VEX).
+5. Add a **Box** off to the side, then **Tab** → `copy to points`. Wire the box into the
+   first input and the wrangle into the second. Press **R** on it.
+6. Tweak the spare parameters on the wrangle, or press **Edit** and change the VEX: the
+   viewport updates as you type. Press **I** over a field to keyframe it, or type
+   `#frame * 0.1` to drive it like a `$F` expression.
+
 ## Nodes
 
 | Category  | SOPs |
