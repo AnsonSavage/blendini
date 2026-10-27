@@ -61,3 +61,132 @@ def setup_target(obj):
     import math
     obj.rotation_euler = (math.pi / 2, 0.0, 0.0)
     ensure_point_display(obj)
+
+
+# ----------------------------------------------------------------------------
+# Packed geometry -> Blender instances
+
+INST_GROUP = "Blendini Instancer"
+INST_MOD = "Blendini Instances"
+
+
+def _instancer_group():
+    ng = bpy.data.node_groups.get(INST_GROUP)
+    if ng is not None:
+        return ng
+    ng = bpy.data.node_groups.new(INST_GROUP, 'GeometryNodeTree')
+    ng.interface.new_socket(name="Geometry", in_out='INPUT', socket_type='NodeSocketGeometry')
+    ng.interface.new_socket(name="Collection", in_out='INPUT', socket_type='NodeSocketCollection')
+    ng.interface.new_socket(name="Geometry", in_out='OUTPUT', socket_type='NodeSocketGeometry')
+    N, L = ng.nodes, ng.links
+    gin = N.new('NodeGroupInput')
+    gout = N.new('NodeGroupOutput')
+    sel = N.new('GeometryNodeInputNamedAttribute')
+    sel.data_type = 'BOOLEAN'
+    sel.inputs['Name'].default_value = "__instpt"
+    idx = N.new('GeometryNodeInputNamedAttribute')
+    idx.data_type = 'INT'
+    idx.inputs['Name'].default_value = "__inst"
+    rot = N.new('GeometryNodeInputNamedAttribute')
+    rot.data_type = 'QUATERNION'
+    rot.inputs['Name'].default_value = "__inst_rot"
+    scl = N.new('GeometryNodeInputNamedAttribute')
+    scl.data_type = 'FLOAT_VECTOR'
+    scl.inputs['Name'].default_value = "__inst_scale"
+    coll = N.new('GeometryNodeCollectionInfo')
+    coll.inputs['Separate Children'].default_value = True
+    coll.inputs['Reset Children'].default_value = True
+    iop = N.new('GeometryNodeInstanceOnPoints')
+    iop.inputs['Pick Instance'].default_value = True
+    delete = N.new('GeometryNodeDeleteGeometry')
+    join = N.new('GeometryNodeJoinGeometry')
+    L.new(gin.outputs[1], coll.inputs['Collection'])
+    L.new(gin.outputs[0], iop.inputs['Points'])
+    L.new(sel.outputs['Attribute'], iop.inputs['Selection'])
+    L.new(coll.outputs[0], iop.inputs['Instance'])
+    L.new(idx.outputs['Attribute'], iop.inputs['Instance Index'])
+    L.new(rot.outputs['Attribute'], iop.inputs['Rotation'])
+    L.new(scl.outputs['Attribute'], iop.inputs['Scale'])
+    L.new(gin.outputs[0], delete.inputs['Geometry'])
+    L.new(sel.outputs['Attribute'], delete.inputs['Selection'])
+    L.new(delete.outputs[0], join.inputs[0])
+    L.new(iop.outputs[0], join.inputs[0])
+    L.new(join.outputs[0], gout.inputs[0])
+    return ng
+
+
+def _collection_input_id(ng):
+    for item in ng.interface.items_tree:
+        if getattr(item, 'in_out', None) == 'INPUT' and item.socket_type == 'NodeSocketCollection':
+            return item.identifier
+    return None
+
+
+def sync_instances(tree, obj, geo):
+    """Mirror packed geometry sources as hidden objects and drive the instancer modifier."""
+    from .mesh_io import geo_to_mesh
+    mod = obj.modifiers.get(INST_MOD)
+    if not geo.instances:
+        if mod is not None:
+            mod.show_viewport = False
+            mod.show_render = False
+        return
+    cname = ".blendini_instances_" + tree.name
+    coll = bpy.data.collections.get(cname)
+    if coll is None:
+        coll = bpy.data.collections.new(cname)
+    prefix = ".blendini_inst_%s_" % tree.name
+    for i, src in enumerate(geo.instances):
+        name = "%s%03d" % (prefix, i)
+        ob = bpy.data.objects.get(name)
+        if ob is None:
+            ob = bpy.data.objects.new(name, bpy.data.meshes.new(name))
+        if ob.name not in coll.objects:
+            coll.objects.link(ob)
+        geo_to_mesh(src, ob.data)
+        for m in list(ob.data.materials):
+            pass
+        if obj.data.materials and not ob.data.materials:
+            ob.data.materials.append(obj.data.materials[0])
+    # Remove sources that are no longer used (keep order: objects are sorted by name).
+    for ob in list(coll.objects):
+        if ob.name.startswith(prefix):
+            try:
+                k = int(ob.name[len(prefix):])
+            except ValueError:
+                continue
+            if k >= len(geo.instances):
+                mesh = ob.data
+                bpy.data.objects.remove(ob)
+                if mesh is not None and mesh.users == 0:
+                    bpy.data.meshes.remove(mesh)
+    if mod is None:
+        mod = obj.modifiers.new(INST_MOD, 'NODES')
+        mod.node_group = _instancer_group()
+        # The instancer has to run before the point display modifier.
+        try:
+            obj.modifiers.move(len(obj.modifiers) - 1, 0)
+        except (AttributeError, RuntimeError, TypeError):
+            pass
+    mod.show_viewport = True
+    mod.show_render = True
+    ident = _collection_input_id(mod.node_group)
+    if ident is not None:
+        _set_modifier_input(mod, ident, coll)
+        obj.update_tag()
+
+
+def _set_modifier_input(mod, ident, value):
+    props = getattr(mod, 'properties', None)
+    if props is not None:
+        # Blender 5.x: typed modifier inputs.
+        prop = getattr(props.inputs, ident, None)
+        if prop is not None:
+            if prop.value != value:
+                prop.value = value
+            return
+    try:
+        if mod.get(ident) != value:
+            mod[ident] = value
+    except TypeError:
+        pass

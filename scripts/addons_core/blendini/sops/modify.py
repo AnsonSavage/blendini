@@ -886,6 +886,8 @@ class CopyToPointsSOP(SOP):
         Parm('transform', "Transform Using Target Point Orientations", 'bool', default=True),
         Parm('copyattribs', "Copy Point Attributes", 'string', default='*',
              description="Template point attributes to copy onto the copies (wildcards)"),
+        Parm('pack', "Pack and Instance", 'bool', default=False,
+             description="Output packed points that instance the geometry (fast, uses Blender instancing)"),
     )
 
     def cook(self, inputs, p, ctx):
@@ -915,6 +917,9 @@ class CopyToPointsSOP(SOP):
         import fnmatch
         copy_names = [n for n in pa if n not in ('P', 'N', 'orient', 'up', 'pscale', 'scale', 'trans', 'pivot', 'rot')
                       and any(fnmatch.fnmatchcase(n, pat) for pat in p.copyattribs.split())]
+        if p.pack:
+            from ..core.instances import pack
+            return pack(src, T, M, {n: pa[n][tidx] for n in copy_names})
         S = src.num_points
         out = Geometry()
         P = np.einsum('kij,sj->ksi', M, src.P) + T[:, None, :]
@@ -1572,3 +1577,16 @@ class SweepSOP(SOP):
             out.add_prims(caps)
         out.attribs[POINT]['curveu'] = np.concatenate(u_attr)
         return out
+
+
+@register_sop
+class UnpackSOP(SOP):
+    id = 'unpack'
+    label = "Unpack"
+    category = 'Copy'
+    inputs = 1
+    icon = 'PACKAGE'
+
+    def cook(self, inputs, p, ctx):
+        from ..core.instances import unpack
+        return unpack(_in(inputs))

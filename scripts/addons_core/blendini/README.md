@@ -45,13 +45,20 @@ Blender is Z-up and Houdini is Y-up. Output objects are rotated 90° around X so
 | Polygon   | Add, Fuse, Facet, Divide, Reverse, PolyExtrude, PolyWire, Sweep, Resample, Subdivide\*, PolyBevel\*, Boolean\*, Remesh\*, PolyReduce\*, Clip\* |
 | Attribute | Attribute Create / Delete / Rename / Promote / Randomize / Noise / Transfer, Color, Normal, Connectivity, Measure, UV Texture, PolyFrame |
 | Group     | Group Create (pattern / bounding box / normal / random / `@expression`), Blast |
-| Copy      | Copy to Points (orient, N/up, pscale, scale), Copy and Transform, Scatter |
+| Copy      | Copy to Points (orient, N/up, pscale, scale, **Pack and Instance**), Unpack, Copy and Transform, Scatter |
 | VEX       | Attribute Wrangle, **Point Wrangle**, Primitive Wrangle, Detail Wrangle, **Solver (VEX)** |
 | Utility   | Merge (multi-input), Switch, Null, Output, Sort, Time Shift, **Block Begin / Block End (For-Each pieces or feedback)** |
 | Blender   | Object Merge, Solidify\*, **Blender Modifier\*** (any modifier, including Geometry Nodes groups) |
 
 \* These use Blender as the backend: the geometry passes through a real Blender modifier
 or `bmesh` operator and comes back with its attributes.
+
+**Packed geometry**: when *Pack and Instance* is on, Copy to Points outputs one point per copy
+that references the source geometry, the same as Houdini's packed primitives. Transform,
+Merge and so on work on the packed points. On output, the copies become real Blender
+instances through a generated Geometry Nodes modifier, so millions of copies stay cheap.
+Per-copy attributes such as `Cd` are available to materials through the
+*Attribute (Instancer)* node. *Unpack* converts packed points back into real geometry.
 
 Group fields accept Houdini patterns: group names, `0-10 15`, `!name`, and VEX
 expressions such as `@P.y > 0` or `@ptnum % 2 == 0`.
@@ -151,5 +158,5 @@ there is no Python SOP.
 
 ## Not done yet (ideas)
 
-Packed primitives and instancing, a geometry spreadsheet that shows groups, NURBS/curves, volumes/VDB,
+A geometry spreadsheet that shows groups, NURBS/curves, volumes/VDB,
 a DOP context, and a multi-line code editor inside the parameter pane.

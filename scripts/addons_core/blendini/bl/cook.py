@@ -392,6 +392,8 @@ def cook_tree(tree, frame=None):
             from .mesh_io import geo_to_mesh
             geo_to_mesh(geo, obj.data)
             obj.data.update()
+            from .display import sync_instances
+            sync_instances(tree, obj, geo)
             _cache[tkey] = (sig, obj.data.name)
         try:
             update_colors(tree)

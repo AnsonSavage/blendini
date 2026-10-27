@@ -75,7 +75,7 @@ def geo_to_mesh(geo, mesh):
         for name, arr in geo.attribs[cls].items():
             if cls == POINT and name == 'P':
                 continue
-            if name.startswith('__') or name.startswith('.'):
+            if (name.startswith('__') and name not in ('__inst', '__inst_rot', '__inst_scale')) or name.startswith('.'):
                 continue
             if cls == PRIM:
                 data = arr[face_prims]
@@ -110,6 +110,8 @@ def geo_to_mesh(geo, mesh):
                 mesh["detail_" + name] = val
         except Exception:
             pass
+    if '__inst' in geo.attribs[POINT] and npts:
+        _write_attr(mesh, '__instpt', 'POINT', geo.attribs[POINT]['__inst'] >= 0)
     # Groups -> boolean attributes.
     for name, g in geo.groups[POINT].items():
         _write_attr(mesh, "group_" + name if name in mesh.attributes else name, 'POINT', g)
@@ -209,7 +211,7 @@ def _write_attr(mesh, name, domain, data):
             attr.data.foreach_set("vector", data.astype(np.float32).ravel())
         return
     if shape == (4,):
-        if name in ('orient', 'rot'):
+        if name in ('orient', 'rot', '__inst_rot'):
             # Houdini quaternions are (x, y, z, w), Blender's are (w, x, y, z).
             attr = _new_attr(mesh, name, 'QUATERNION', domain)
             if attr is not None:

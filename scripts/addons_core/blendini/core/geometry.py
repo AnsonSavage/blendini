@@ -40,7 +40,7 @@ def _default_shape(name):
 
 
 class Geometry:
-    __slots__ = ('attribs', 'prim_start', 'vtx_point', 'prim_closed', 'groups')
+    __slots__ = ('attribs', 'prim_start', 'vtx_point', 'prim_closed', 'groups', 'instances')
 
     def __init__(self):
         self.attribs = {POINT: {'P': np.zeros((0, 3))}, PRIM: {}, VERTEX: {}, DETAIL: {}}
@@ -50,6 +50,9 @@ class Geometry:
         self.prim_closed = np.zeros(0, dtype=bool)
         # Groups: {POINT: {name: bool array}, PRIM: {...}}
         self.groups = {POINT: {}, PRIM: {}}
+        # Packed geometry: points with an '__inst' attribute >= 0 instance instances[__inst]
+        # with the '__inst_rot' (quaternion xyzw) and '__inst_scale' point attributes.
+        self.instances = []
 
     # ------------------------------------------------------------------
     # Construction helpers
@@ -69,6 +72,7 @@ class Geometry:
         geo.vtx_point = self.vtx_point.copy()
         geo.prim_closed = self.prim_closed.copy()
         geo.groups = {c: {k: v.copy() for k, v in d.items()} for c, d in self.groups.items()}
+        geo.instances = list(self.instances)
         return geo
 
     # ------------------------------------------------------------------
@@ -187,6 +191,8 @@ class Geometry:
         for name, arr in list(self.attribs[POINT].items()):
             if name == 'P':
                 self.attribs[POINT]['P'] = np.concatenate([arr, positions])
+            elif name == '__inst':
+                self.attribs[POINT][name] = np.concatenate([arr, np.full(n_new, -1, dtype=arr.dtype)])
             else:
                 self.attribs[POINT][name] = _grow(arr, n_new)
         for name, g in self.groups[POINT].items():
@@ -225,6 +231,9 @@ class Geometry:
         m = np.asarray(matrix, dtype=np.float64)
         P = self.P
         self.P = P @ m[:3, :3].T + m[:3, 3]
+        if '__inst_rot' in self.attribs[POINT]:
+            from .instances import transform_instances
+            transform_instances(self, m[:3, :3])
         if vectors:
             rot = m[:3, :3]
             try:
@@ -456,6 +465,7 @@ def merge(geos):
                     names[name] = (arr.shape[1:], arr.dtype)
         for name, (shape, dtype) in names.items():
             parts = []
+            inst_offset = 0
             for g in geos:
                 n = g.count(cls)
                 arr = g.attribs[cls].get(name)
@@ -463,6 +473,14 @@ def merge(geos):
                     arr = np.zeros((n,) + shape, dtype=dtype)
                     if dtype == object:
                         arr[...] = ''
+                    if name == '__inst':
+                        arr[...] = -1
+                    if name == '__inst_scale':
+                        arr[...] = 1
+                elif name == '__inst':
+                    arr = np.where(arr >= 0, arr + inst_offset, -1)
+                if name == '__inst':
+                    inst_offset += len(g.instances)
                 parts.append(arr.astype(dtype, copy=False))
             out.attribs[cls][name] = np.concatenate(parts) if parts else np.zeros((0,) + shape, dtype)
     for g in geos:
@@ -482,6 +500,7 @@ def merge(geos):
     out.vtx_point = np.concatenate(vtx).astype(np.int64)
     out.prim_start = np.concatenate(starts).astype(np.int64)
     out.prim_closed = np.concatenate([g.prim_closed for g in geos])
+    out.instances = [inst for g in geos for inst in g.instances]
     for cls in (POINT, PRIM):
         names = set()
         for g in geos:
