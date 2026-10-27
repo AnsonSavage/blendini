@@ -81,6 +81,26 @@ defaults, e.g. white for `Cd` and 1 for `pscale`.
 Blender is Z-up and Houdini is Y-up. Output objects are rotated 90° around X so
 `@P.y` stays "up" in your VEX. Object Merge converts the other way.
 
+## Houdini → Blendini cheat sheet
+
+| Houdini | Blendini |
+|---------|----------|
+| `/obj/geo1` geometry node | A Blender object plus its *Blendini SOP Network* (`geo1`) |
+| Network editor, **Tab** menu | Node editor with a Blendini tree, **Tab** menu (type to search) |
+| Display / template / bypass flags | Flag buttons on each node, **R** (display), **M** (bypass), colored bars on the node edges |
+| Parameter pane | **N** sidebar → *Parameters* |
+| Middle-click node info | *Parameters* → *Geometry Info* |
+| Geometry Spreadsheet | **N** sidebar → *Spreadsheet* (active node), or Blender's own Spreadsheet (display node) |
+| Wrangles, VEX, `ch()` spare parameters | Wrangles with the SIMD VEX interpreter, **+** creates spare parameters, ramps via `chramp()` |
+| Attribute VOP | Attribute VOP, **I** dives into the VOP network, **U** comes back |
+| `$F`, `$T`, keyframes | Driver expressions such as `#frame * 0.1` (evaluated by Blendini), keyframes with **I** |
+| Subnets / digital assets | Subnetwork node, **I** / **U** to dive in and out |
+| Packed primitives | *Pack and Instance* on Copy to Points, Pack, Assemble; rendered as Blender instances |
+| SOP Solver, Vellum, RBD (Bullet), FLIP | Solver (VEX), Vellum Cloth (PBD), RBD Bullet Solver, Fluid Solver (PBF) + Particle Fluid Surface |
+| VDB | OpenVDB through Geometry Nodes (Particle Fluid Surface, Remesh) |
+| Mantra / Karma | Cycles / EEVEE; `Cd` is rendered by the automatic *Blendini Cd* material |
+| Y-up | Y-up inside networks; output objects are rotated into Blender's Z-up |
+
 ## Your first network (the classic Houdini warm-up)
 
 1. *Add → Blendini Geometry* (or *File → New → Blendini*). Delete the starter nodes if you
