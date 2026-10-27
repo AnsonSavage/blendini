@@ -85,7 +85,14 @@ class Interpreter:
     def run(self):
         mask = np.ones(self.n, dtype=bool)
         with np.errstate(all='ignore'):
-            self.exec_block(self.program.body, mask)
+            try:
+                self.exec_block(self.program.body, mask)
+            except VexError as ex:
+                if str(ex).startswith("Line "):
+                    raise
+                raise VexError("Line %d: %s" % (self.cur_line, ex)) from None
+            except (TypeError, ValueError, IndexError, KeyError, AttributeError) as ex:
+                raise VexError("Line %d: %s" % (self.cur_line, ex)) from None
 
     def exec_block(self, stmts, mask):
         for s in stmts:

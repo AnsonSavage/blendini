@@ -363,10 +363,9 @@ def run_wrangle(code, inputs, run_over=POINT, group=None, channels=None, ramps=N
     else:
         count = geo.count(run_over)
         elems = np.arange(count)
-        if group:
-            g = geo.groups.get(run_over, {}).get(group)
-            if g is not None:
-                elems = np.nonzero(g)[0]
+        if group and run_over in (POINT, PRIM):
+            from ..sops.base import parse_group_pattern
+            elems = np.nonzero(parse_group_pattern(geo, run_over, group))[0]
     ctx = WrangleContext(inputs, run_over, elems, channels, ramps, time, frame, fps)
     n = len(elems)
     if n == 0:
