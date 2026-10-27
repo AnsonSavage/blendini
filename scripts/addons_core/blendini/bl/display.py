@@ -31,6 +31,18 @@ def _point_display_group():
     to_points.mode = 'VERTICES'
     to_points.location = (-200, -100)
     to_points.inputs['Radius'].default_value = 0.015
+    # Use pscale as the point radius when present (Houdini convention).
+    pscale = nodes.new('GeometryNodeInputNamedAttribute')
+    pscale.data_type = 'FLOAT'
+    pscale.inputs['Name'].default_value = "pscale"
+    pscale.location = (-600, -400)
+    switch = nodes.new('GeometryNodeSwitch')
+    switch.input_type = 'FLOAT'
+    switch.location = (-400, -400)
+    switch.inputs['False'].default_value = 0.015
+    links.new(pscale.outputs['Exists'], switch.inputs['Switch'])
+    links.new(pscale.outputs['Attribute'], switch.inputs['True'])
+    links.new(switch.outputs[0], to_points.inputs['Radius'])
     join = nodes.new('GeometryNodeJoinGeometry')
     join.location = (100, 0)
     links.new(neighbours.outputs['Vertex Count'], is_loose.inputs[0])

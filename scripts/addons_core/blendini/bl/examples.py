@@ -288,6 +288,15 @@ def build_examples():
     _finish(t, col)
     trees.append(t)
 
+    t = _new_tree("fluid_dambreak", (130, 0, 0))
+    blk = _node(t, 'box', (0, 600), size=(1.2, 1.6, 1.8), t=(-1.35, 0.8, 0.0))
+    pfv = _node(t, 'pointsfromvolume', (0, 400), pointsep=0.08)
+    fl = _node(t, 'fluidsolver', (0, 200), particlesep=0.08, boxmin=(-2.0, 0.0, -0.9), boxmax=(2.0, 3.0, 0.9))
+    col = _node(t, 'pointwrangle', (0, 0), snippet='@Cd = lerp({0.05, 0.25, 0.8}, {0.8, 0.95, 1.0}, fit(length(v@v), 0, 3, 0, 1));')
+    _chain(t, [blk, pfv, fl, col])
+    _finish(t, col)
+    trees.append(t)
+
     t = _new_tree("spiral", (50, 0, 0))
     w = _node(t, 'detailwrangle', (0, 200), snippet=SPIRAL)
     _spare(w, count=200, turns=4.0)

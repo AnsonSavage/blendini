@@ -374,6 +374,30 @@ class TestMoreSops(unittest.TestCase):
         self.assertGreaterEqual(out.P[:, 1].min(), p.groundy + p.thickness - 1e-6)
         self.assertLess(out.P[:, 1].mean(), 1.0)
 
+    def test_fluid_neighbours_and_containment(self):
+        from blendini.sops.fluid import neighbour_pairs
+        from blendini.sops import REGISTRY, default_parms, CookContext
+        rng = np.random.RandomState(0)
+        P = rng.random_sample((300, 3))
+        I, J = neighbour_pairs(P, 0.2)
+        d = np.linalg.norm(P[:, None] - P[None], axis=2)
+        self.assertEqual(len(I), int(((d < 0.2) & ~np.eye(300, dtype=bool)).sum()))
+        g = np.arange(0, 0.5, 0.1) + 0.05
+        blk = Geometry.from_polys(np.stack(np.meshgrid(g, g, g, indexing='ij'), -1).reshape(-1, 3))
+        p = default_parms('fluidsolver')
+        p['boxmin'], p['boxmax'] = (0.0, 0.0, 0.0), (1.0, 2.0, 1.0)
+        state = {}
+        for f in range(1, 20):
+            out = REGISTRY['fluidsolver'].cook([blk], p, CookContext(time=(f - 1) / 24, frame=f, fps=24, state=state))
+        self.assertTrue(np.all(out.P >= -1e-9) and np.all(out.P <= np.array([1.0, 2.0, 1.0]) + 1e-9))
+
+    def test_heightfield(self):
+        hf = cook_sop('heightfield', size=(4.0, 4.0), gridspacing=0.1)
+        n = cook_sop('hfnoise', [hf])
+        e = cook_sop('hferode', [n], iterations=5)
+        self.assertEqual(e.num_points, hf.num_points)
+        self.assertGreater(np.ptp(n.P[:, 1]), 0.1)
+
     def test_obj_roundtrip(self):
         import os
         import tempfile
