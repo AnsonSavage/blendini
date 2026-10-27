@@ -465,7 +465,8 @@ class VoronoiFractureSOP(SOP):
     parms = (
         Parm('npts', "Cell Count (no 2nd input)", 'int', default=20, min=1, soft_max=200),
         Parm('seed', "Seed", 'int', default=0),
-        Parm('neighbours', "Max Neighbour Cells", 'int', default=14, min=3, max=64),
+        Parm('neighbours', "Max Neighbour Cells (0 = all)", 'int', default=0, min=0, max=512,
+             description="Cut each cell only against its nearest sites (faster, but too few cause overlapping cells)"),
         Parm('cutgroup', "Inside Group", 'string', default='inside'),
     )
 
@@ -482,7 +483,7 @@ class VoronoiFractureSOP(SOP):
             lo, hi = geo.bbox()
             rng = np.random.RandomState(p.seed & 0x7FFFFFFF)
             sites = lo + rng.random_sample((max(p.npts, 1), 3)) * (hi - lo)
-        k = min(max(p.neighbours, 3), len(sites) - 1)
+        k = len(sites) - 1 if p.neighbours <= 0 else min(max(p.neighbours, 3), len(sites) - 1)
         src_mesh = bpy.data.meshes.new("_blendini_vfrac")
         try:
             geo_to_mesh(geo, src_mesh)
@@ -535,3 +536,182 @@ def _inside_faces(out, original):
     centers = out.prim_centers()
     loc, nrm, prim, dist = closest(original, centers)
     return dist > 1e-4
+
+
+# ----------------------------------------------------------------------------
+# Rigid bodies (Blender's Bullet integration as the backend)
+
+
+def _rbd_cleanup(state):
+    scene = bpy.data.scenes.get(state.get('scene', ''))
+    if scene is not None:
+        objs = list(scene.collection.objects)
+        if scene.rigidbody_world is not None and scene.rigidbody_world.collection is not None:
+            coll = scene.rigidbody_world.collection
+        else:
+            coll = None
+        for ob in objs:
+            mesh = ob.data
+            bpy.data.objects.remove(ob)
+            if mesh is not None and mesh.users == 0:
+                bpy.data.meshes.remove(mesh)
+        bpy.data.scenes.remove(scene)
+        if coll is not None and coll.users == 0:
+            bpy.data.collections.remove(coll)
+    state.clear()
+
+
+def _add_rigid_body(scene, ob, kind):
+    with bpy.context.temp_override(scene=scene, object=ob, active_object=ob, selected_objects=[ob],
+                                   selected_editable_objects=[ob]):
+        bpy.ops.rigidbody.object_add(type=kind)
+
+
+@register_sop
+class RBDSolverSOP(SOP):
+    id = 'rbdsolver'
+    label = "RBD Bullet Solver"
+    category = 'Manipulate'
+    inputs = 2
+    input_labels = ("Pieces", "Static Colliders")
+    icon = 'RIGID_BODY'
+    time_dependent = True
+    description = "Rigid body simulation of pieces (by 'name'/'class' attribute or connectivity) using Bullet"
+    parms = (
+        Parm('pieceattrib', "Piece Attribute", 'string', default='name'),
+        Parm('startframe', "Start Frame", 'int', default=1),
+        Parm('ground', "Ground Plane", 'bool', default=True),
+        Parm('groundy', "Ground Height", 'float', default=0.0),
+        Parm('gravity', "Gravity", 'float', default=9.81),
+        Parm('friction', "Friction", 'float', default=0.5, min=0, max=1),
+        Parm('bounce', "Bounce", 'float', default=0.1, min=0, max=1),
+        Parm('density', "Density", 'float', default=1.0, min=0.001),
+        Parm('substeps', "Substeps per Frame", 'int', default=10, min=1, max=100),
+        Parm('shrink', "Collision Shrink", 'float', default=0.97, min=0.5, max=1.0,
+             description="Shrink collision shapes so pieces that touch at the start don't push each other apart"),
+        Parm('margin', "Collision Margin", 'float', default=0.001, min=0, soft_max=0.1,
+             description="Small margins stop touching pieces (e.g. from a fracture) from pushing apart"),
+    )
+
+    def _build(self, pieces, colliders, p, state, start, fps):
+        from ..bl.mesh_io import geo_to_mesh
+        name = "_blendini_rbd_%x" % id(state)
+        scene = bpy.data.scenes.new(name)
+        state['scene'] = scene.name
+        with bpy.context.temp_override(scene=scene):
+            bpy.ops.rigidbody.world_add()
+        world = scene.rigidbody_world
+        if world.collection is None:
+            world.collection = bpy.data.collections.new(name + "_objs")
+        # Blendini is Y-up: point gravity along -Y.
+        scene.use_gravity = True
+        scene.gravity = (0.0, -p.gravity, 0.0)
+        scene.render.fps = int(round(fps))
+        scene.frame_start = start
+        scene.frame_end = start + 100000
+        world.point_cache.frame_start = start
+        world.point_cache.frame_end = start + 100000
+        try:
+            world.substeps_per_frame = p.substeps
+        except AttributeError:
+            pass
+        objs = []
+        centers = []
+        for i, piece in enumerate(pieces):
+            c = piece.P.mean(axis=0) if piece.num_points else np.zeros(3)
+            local = piece.copy()
+            local.P = (local.P - c) * p.shrink
+            mesh = bpy.data.meshes.new("%s_%d" % (name, i))
+            geo_to_mesh(local, mesh)
+            ob = bpy.data.objects.new(mesh.name, mesh)
+            ob.location = c
+            scene.collection.objects.link(ob)
+            _add_rigid_body(scene, ob, 'ACTIVE')
+            rb = ob.rigid_body
+            rb.collision_shape = 'CONVEX_HULL'
+            rb.friction = p.friction
+            rb.restitution = p.bounce
+            rb.use_margin = True
+            rb.collision_margin = p.margin
+            vol = _hull_volume(local)
+            rb.mass = max(vol * p.density, 1e-4)
+            objs.append(ob.name)
+            centers.append(c)
+        statics = []
+        if p.ground:
+            from ..core.geometry import Geometry
+            gsize = 1000.0
+            ground = Geometry.from_polys(
+                np.array([[-gsize, p.groundy, -gsize], [gsize, p.groundy, -gsize], [gsize, p.groundy, gsize],
+                          [-gsize, p.groundy, gsize]]), [[0, 3, 2, 1]])
+            statics.append(ground)
+        if colliders is not None and colliders.num_prims:
+            statics.append(colliders)
+        for j, sgeo in enumerate(statics):
+            mesh = bpy.data.meshes.new("%s_static%d" % (name, j))
+            geo_to_mesh(sgeo, mesh)
+            ob = bpy.data.objects.new(mesh.name, mesh)
+            scene.collection.objects.link(ob)
+            _add_rigid_body(scene, ob, 'PASSIVE')
+            ob.rigid_body.collision_shape = 'MESH' if j > 0 or not p.ground else 'BOX'
+            ob.rigid_body.friction = p.friction
+            ob.rigid_body.restitution = p.bounce
+        state['objects'] = objs
+        state['centers'] = np.array(centers)
+        state['frames'] = {}
+        state['last'] = start - 1
+        scene.frame_set(start)
+
+    def cook(self, inputs, p, ctx):
+        from ..core.geometry import merge
+        from .modify import split_pieces
+        geo = _in(inputs, 0)
+        colliders = _in(inputs, 1) if len(inputs) > 1 and inputs[1] is not None else None
+        state = ctx.state
+        frame = int(round(ctx.frame))
+        start = int(p.startframe)
+        key = (tuple(sorted(p.items())), geo.num_points, geo.num_prims, float(geo.P.sum()) if geo.num_points else 0.0,
+               colliders.num_points if colliders is not None else 0)
+        if state.get('key') != key or bpy.data.scenes.get(state.get('scene', '')) is None:
+            _rbd_cleanup(state)
+            state['key'] = key
+            pieces = split_pieces(geo, p.pieceattrib.strip())
+            state['pieces'] = pieces
+            if not pieces:
+                return geo
+            self._build(pieces, colliders, p, state, start, ctx.fps)
+        pieces = state['pieces']
+        if frame <= start:
+            return geo
+        frames = state['frames']
+        if frame not in frames:
+            scene = bpy.data.scenes[state['scene']]
+            if frame < state['last']:
+                # Scrubbing backwards past the cache: rebuild.
+                _rbd_cleanup(state)
+                return self.cook(inputs, p, ctx)
+            for f in range(max(state['last'] + 1, start), frame + 1):
+                scene.frame_set(f)
+                mats = []
+                for name in state['objects']:
+                    ob = bpy.data.objects[name]
+                    mats.append(np.array(ob.matrix_world))
+                frames[f] = np.array(mats)
+                state['last'] = f
+        mats = frames[frame]
+        out_pieces = []
+        for piece, c, m in zip(pieces, state['centers'], mats):
+            g = piece.copy()
+            local = g.P - c
+            g.P = local @ m[:3, :3].T + m[:3, 3]
+            out_pieces.append(g)
+        return merge(out_pieces)
+
+
+def _hull_volume(geo):
+    tris, _ = geo.triangulate_flat()
+    if len(tris) == 0:
+        return 1.0
+    A, B, C = geo.P[tris[:, 0]], geo.P[tris[:, 1]], geo.P[tris[:, 2]]
+    vol = abs(np.sum(np.einsum('ij,ij->i', A, np.cross(B, C))) / 6.0)
+    return vol if vol > 1e-9 else 1.0

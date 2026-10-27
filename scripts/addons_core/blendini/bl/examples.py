@@ -253,6 +253,16 @@ def build_examples():
     _finish(t, end)
     trees.append(t)
 
+    t = _new_tree("rbd_fracture", (100, 0, 0))
+    box = _node(t, 'box', (0, 600), size=(2.0, 2.0, 2.0))
+    fr = _node(t, 'voronoifracture', (0, 400), npts=40, seed=7)
+    col = _node(t, 'primwrangle', (0, 200), snippet=INSIDE)
+    lift = _node(t, 'xform', (0, 0), t=(0.0, 3.0, 0.0), r=(25.0, 35.0, 10.0))
+    rbd = _node(t, 'rbdsolver', (0, -200))
+    _chain(t, [box, fr, col, lift, rbd])
+    _finish(t, rbd)
+    trees.append(t)
+
     t = _new_tree("spiral", (50, 0, 0))
     w = _node(t, 'detailwrangle', (0, 200), snippet=SPIRAL)
     _spare(w, count=200, turns=4.0)

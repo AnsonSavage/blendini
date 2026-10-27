@@ -53,7 +53,10 @@ def forget_node(node):
     except ReferenceError:
         return
     _cache.pop(key, None)
-    _states.pop(key, None)
+    state = _states.pop(key, None)
+    if state and state.get('scene'):
+        from ..sops.blender_ops import _rbd_cleanup
+        _rbd_cleanup(state)
 
 
 def is_cooking():
