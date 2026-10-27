@@ -464,3 +464,24 @@ class SolverWrangleSOP(_WrangleBase):
 
 
 SolverWrangleSOP.parms = SolverWrangleSOP.make_parms()
+
+
+@register_sop
+class AttribVOPSOP(_WrangleBase):
+    """Visual VEX: the VOP network inside is turned into VEX code"""
+    id = 'attribvop'
+    label = "Attribute VOP"
+    icon = 'NODE_MATERIAL'
+    parms = (
+        Parm('group', "Group", 'string'),
+        Parm('class', "Run Over", 'enum', items=RUN_OVER_ITEMS[:4]),
+        Parm('voptree', "VOP Network", 'vopnetwork', description="The VOP network (dive in with I)"),
+    )
+
+    def cook(self, inputs, p, ctx):
+        if not p.get('snippet'):
+            return _in(inputs)
+        p = dict(p)
+        p['numcount'] = 0
+        from . import ParmValues
+        return _WrangleBase.cook(self, inputs, ParmValues(p), ctx)

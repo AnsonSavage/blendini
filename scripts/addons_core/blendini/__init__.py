@@ -37,6 +37,8 @@ def register():
         bpy.utils.register_class(cls)
     import nodeitems_utils
     nodeitems_utils.register_node_categories("BLENDINI_NODES", _node_categories())
+    from .bl import vop
+    vop.register()
     ui.register()
 
 
@@ -44,6 +46,8 @@ def unregister():
     import bpy
     from .bl import tree, ui
     ui.unregister()
+    from .bl import vop
+    vop.unregister()
     import nodeitems_utils
     try:
         nodeitems_utils.unregister_node_categories("BLENDINI_NODES")

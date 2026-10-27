@@ -115,6 +115,45 @@ c = lerp(c, {0.12, 0.2, 0.3}, smooth(5, 8, f@flow) * 0.8);
 """
 
 
+def _build_displace_vop(vt):
+    """Noise displacement along N with a color from the noise, built from VOP nodes."""
+    from .vop import VOP_PREFIX
+    g = vt.nodes['Geometry VOP Global Parameters']
+    o = vt.nodes['Geometry VOP Output']
+    for link in list(vt.links):
+        vt.links.remove(link)
+
+    def add(kind, x, y):
+        n = vt.nodes.new(VOP_PREFIX + kind)
+        n.location = (x, y)
+        return n
+    noise = add('noise', -100, 200)
+    noise.inputs['Frequency'].default_value = 2.5
+    parm = add('parm', -100, -50)
+    parm.parmname = 'amp'
+    mul = add('mulfloat', 100, 100)
+    scale = add('scale', 300, 50)
+    plus = add('add', 500, 100)
+    comp = add('compose', 300, -200)
+    comp.inputs['Y'].default_value = 0.7
+    comp.inputs['Z'].default_value = 1.0
+    hsv = add('hsv', 500, -200)
+    L = vt.links.new
+    L(g.outputs['P'], noise.inputs['Position'])
+    L(noise.outputs[0], mul.inputs['A'])
+    L(parm.outputs[0], mul.inputs['B'])
+    L(g.outputs['N'], scale.inputs['Vector'])
+    L(mul.outputs[0], scale.inputs['Scale'])
+    L(g.outputs['P'], plus.inputs['A'])
+    L(scale.outputs[0], plus.inputs['B'])
+    L(plus.outputs[0], o.inputs['P'])
+    L(noise.outputs[0], comp.inputs['X'])
+    L(comp.outputs[0], hsv.inputs['HSV'])
+    L(hsv.outputs[0], o.inputs['Cd'])
+    o.location = (750, 0)
+    g.location = (-400, 0)
+
+
 def _node(tree, sop_id, loc, **parms):
     node = tree.nodes.new(NODE_PREFIX + sop_id)
     node.location = loc
@@ -296,6 +335,15 @@ def build_examples():
     col = _node(t, 'pointwrangle', (0, -200), snippet='@Cd = {0.1, 0.35, 0.8};')
     _chain(t, [blk, pfv, fl, surf, col])
     _finish(t, col)
+    trees.append(t)
+
+    t = _new_tree("vop_displace", (145, 0, 0))
+    sph = _node(t, 'sphere', (0, 200), type='polymesh', freq=4, rad=(1.5, 1.5, 1.5))
+    vopn = _node(t, 'attribvop', (0, 0))
+    _chain(t, [sph, vopn])
+    _finish(t, vopn)
+    _build_displace_vop(bpy.data.node_groups[vopn.p_voptree])
+    _spare(vopn, amp=0.5)
     trees.append(t)
 
     t = _new_tree("spiral", (50, 0, 0))

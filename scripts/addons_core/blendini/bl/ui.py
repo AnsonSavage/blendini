@@ -104,6 +104,8 @@ def draw_parms(node, context, layout, compact=False):
             col.prop_search(node, pname, bpy.data, "node_groups", text=parm.label)
         elif parm.type == 'image':
             col.prop_search(node, pname, bpy.data, "images", text=parm.label)
+        elif parm.type == 'vopnetwork':
+            col.prop_search(node, pname, bpy.data, "node_groups", text=parm.label)
         elif parm.type in ('vector', 'vector2') and not compact:
             row = col.row(align=True)
             row.prop(node, pname, text=parm.label)
@@ -119,6 +121,19 @@ def draw_parms(node, context, layout, compact=False):
         col2.operator("blendini.edit_begin", icon='EDITMODE_HLT')
         col2.operator("blendini.edit_commit", icon='CHECKMARK')
         col2.operator("blendini.edit_clear", icon='X')
+    if sop.id == 'attribvop':
+        row = layout.row(align=True)
+        row.operator("blendini.dive_in", text="Dive In (I)", icon='TRIA_DOWN_BAR')
+        op = row.operator("blendini.create_spare_parms", text="", icon='ADD')
+        op.node_name = node.name
+        _draw_spare(node, layout, compact)
+        if not compact:
+            box = layout.box()
+            box.label(text="Generated VEX", icon='SCRIPT')
+            code_col = box.column(align=True)
+            code_col.scale_y = 0.75
+            for line in node.parm_values().get('snippet', '').splitlines()[:40]:
+                code_col.label(text=line)
     if sop.id == 'subnet':
         row = layout.row(align=True)
         row.prop(node, "subtree", text="")
@@ -245,11 +260,53 @@ class BLENDINI_OT_dive_in(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         tree, node = _active_node(context)
-        return node is not None and node.sop_id == 'subnet' and node.subtree is not None
+        if node is None:
+            return False
+        if node.sop_id == 'subnet':
+            return node.subtree is not None
+        return node.sop_id == 'attribvop' and bpy.data.node_groups.get(node.p_voptree) is not None
 
     def execute(self, context):
         tree, node = _active_node(context)
+        if node.sop_id == 'attribvop':
+            from .vop import VOP_TREE_ID
+            vt = bpy.data.node_groups[node.p_voptree]
+            space = context.space_data
+            # VOP networks are a different tree type: show it directly (U comes back).
+            _vop_return[vt.name] = space.node_tree.name if space.node_tree else ''
+            space.tree_type = VOP_TREE_ID
+            space.node_tree = vt
+            return {'FINISHED'}
         context.space_data.path.append(node.subtree, node=node)
+        return {'FINISHED'}
+
+
+_vop_return = {}
+
+
+class BLENDINI_OT_vop_jump_up(bpy.types.Operator):
+    """Go back from a VOP network to the SOP network (Houdini: U)"""
+    bl_idname = "blendini.vop_jump_up"
+    bl_label = "Jump Up"
+
+    @classmethod
+    def poll(cls, context):
+        from .vop import VOP_TREE_ID
+        space = context.space_data
+        return space is not None and space.type == 'NODE_EDITOR' and space.tree_type == VOP_TREE_ID
+
+    def execute(self, context):
+        space = context.space_data
+        vt = space.node_tree
+        back = bpy.data.node_groups.get(_vop_return.get(vt.name, '')) if vt else None
+        if back is None:
+            for t in cook.all_trees():
+                if any(getattr(n, 'p_voptree', None) == (vt.name if vt else None) for n in t.nodes):
+                    back = t
+                    break
+        space.tree_type = TREE_ID
+        if back is not None:
+            space.node_tree = back
         return {'FINISHED'}
 
 
@@ -1246,6 +1303,7 @@ classes = (
     BLENDINI_OT_vex_functions,
     BLENDINI_OT_dive_in,
     BLENDINI_OT_jump_up,
+    BLENDINI_OT_vop_jump_up,
     BLENDINI_OT_edit_begin,
     BLENDINI_OT_edit_commit,
     BLENDINI_OT_edit_clear,
@@ -1292,6 +1350,7 @@ def register():
         addon_keymaps.append((km, km.keymap_items.new(BLENDINI_OT_set_display.bl_idname, 'R', 'PRESS')))
         addon_keymaps.append((km, km.keymap_items.new(BLENDINI_OT_dive_in.bl_idname, 'I', 'PRESS')))
         addon_keymaps.append((km, km.keymap_items.new(BLENDINI_OT_jump_up.bl_idname, 'U', 'PRESS')))
+        addon_keymaps.append((km, km.keymap_items.new(BLENDINI_OT_vop_jump_up.bl_idname, 'U', 'PRESS')))
 
 
 def unregister():

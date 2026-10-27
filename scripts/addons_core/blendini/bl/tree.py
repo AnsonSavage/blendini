@@ -149,6 +149,9 @@ class BlendiniNodeBase:
             self.display_flag = True
         if sop.id == 'subnet':
             self.subtree = make_subnet_tree(tree, self.name)
+        if sop.id == 'attribvop':
+            from .vop import make_default_vop_tree
+            self.p_voptree = make_default_vop_tree("%s/%s" % (tree.name, self.name)).name
         update_colors(tree)
 
     def copy(self, node):
@@ -189,6 +192,13 @@ class BlendiniNodeBase:
             values[parm.name] = v
         if self.text is not None and 'snippet' in values:
             values['snippet'] = self.text.as_string()
+        if self.sop_id == 'attribvop':
+            from .vop import generate_vex
+            vt = bpy.data.node_groups.get(values.get('voptree', ''))
+            try:
+                values['snippet'] = generate_vex(vt) if vt is not None else ''
+            except ValueError as ex:
+                values['snippet'] = '#error %s' % ex
         return values
 
     def channels(self):

@@ -40,9 +40,9 @@ Or step by step:
 1. Enable **Blendini** in *Preferences → Add-ons*.
 2. In the 3D viewport choose *Add → Blendini Geometry*. This creates `geo1` (an object
    plus its SOP network, like `/obj/geo1`) and opens the network in a node editor.
-3. Or use *Add → Blendini Examples* to build thirteen example networks: ripple, scatter and
+3. Or use *Add → Blendini Examples* to build fourteen example networks: ripple, scatter and
    copy, plexus, city, particles, for-each, L-system tree, Vellum cloth, fracture, RBD
-   fracture, eroded terrain, fluid dam break and spiral. Press play for the simulations.
+   fracture, eroded terrain, fluid dam break, VOP displacement and spiral. Press play for the simulations.
 4. In the node editor:
    - **Tab**: Houdini-style TAB menu (start typing to search). With a node selected, the new
      node is wired to its output and takes over the display flag, like Houdini.
@@ -91,7 +91,7 @@ Blender is Z-up and Houdini is Y-up. Output objects are rotated 90° around X so
 | Terrain   | HeightField, HeightField Noise (fBm / ridged), HeightField Erode (thermal + flow-based hydraulic) |
 | Group     | Group Create (pattern / bounding box / normal / random / `@expression`), Blast |
 | Copy      | Copy to Points (orient, N/up, pscale, scale, piece variants, **Pack and Instance**), Pack, Unpack, Assemble, Copy and Transform, Scatter, Points from Volume\* |
-| VEX       | Attribute Wrangle (run over points / prims / vertices / detail / numbers), **Point Wrangle**, Primitive Wrangle, Detail Wrangle |
+| VEX       | Attribute Wrangle (run over points / prims / vertices / detail / numbers), **Point Wrangle**, Primitive Wrangle, Detail Wrangle, **Attribute VOP** (visual VEX: Globals, Bind, Parameter, math, vector, noise and color VOPs; dive in with I; shows the generated VEX) |
 | Utility   | File (.obj), **Subnetwork** + Subnet Input (dive in with I, up with U), Merge (multi-input), Switch, Null, Output, Sort, Time Shift, **Block Begin / Block End (For-Each pieces or feedback)** |
 | Blender   | Object Merge (meshes and curves), Solidify\*, **Blender Modifier\*** (any modifier, including Geometry Nodes groups) |
 
@@ -213,6 +213,6 @@ there is no Python SOP.
 
 ## Not done yet (ideas)
 
-NURBS and Bézier primitives, volumes/VDB, a full DOP context (constraints, FLIP meshing, Pyro), VOPs, VEX `struct`s
+NURBS and Bézier primitives, volumes/VDB, a full DOP context (constraints, FLIP meshing, Pyro), more VOP types, VEX `struct`s
 and function-like macros, viewport handles/states, and a multi-line code editor inside the parameter
 pane. Today the code is edited in Blender's Text Editor, which recooks live.
