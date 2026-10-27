@@ -908,11 +908,16 @@ class CopyToPointsSOP(SOP):
              description="Template point attributes to copy onto the copies (wildcards)"),
         Parm('pack', "Pack and Instance", 'bool', default=False,
              description="Output packed points that instance the geometry (fast, uses Blender instancing)"),
+        Parm('pieceattrib', "Piece Attribute", 'string', default='',
+             description="Copy only the source piece whose primitive attribute matches the point's value (e.g. variant)"),
     )
 
     def cook(self, inputs, p, ctx):
         src = _in(inputs, 0)
         tgt = _in(inputs, 1)
+        piece_attr = p.get('pieceattrib', '').strip()
+        if piece_attr and piece_attr in src.attribs[PRIM] and piece_attr in tgt.attribs[POINT]:
+            return self._cook_variants(src, tgt, p, ctx, piece_attr)
         sel = parse_group_pattern(tgt, POINT, p.targetgroup)
         tidx = np.nonzero(sel)[0]
         K = len(tidx)
@@ -975,6 +980,37 @@ class CopyToPointsSOP(SOP):
             for name, g in src.groups[cls].items():
                 out.groups[cls][name] = np.tile(g, K)
         return out
+
+
+def _copy_variants(self, src, tgt, p, ctx, piece_attr):
+    """Copy to Points where each point picks the source piece with a matching attribute value."""
+    values = src.attribs[PRIM][piece_attr]
+    tvals = tgt.attribs[POINT][piece_attr]
+    if values.ndim > 1:
+        values = values[:, 0]
+    if tvals.ndim > 1:
+        tvals = tvals[:, 0]
+    sel = parse_group_pattern(tgt, POINT, p.targetgroup)
+    sub_p = dict(p)
+    sub_p['pieceattrib'] = ''
+    sub_p['targetgroup'] = ''
+    from . import ParmValues
+    sub_p = ParmValues(sub_p)
+    results = []
+    for v in (list(dict.fromkeys(values.tolist())) if values.dtype == object else np.unique(values)):
+        piece = src.copy()
+        piece.delete_prims(values != v)
+        piece.delete_unused_points()
+        mask = sel & (tvals == v)
+        if not mask.any() or piece.num_points == 0:
+            continue
+        points = tgt.copy()
+        points.delete_points(~mask)
+        results.append(CopyToPointsSOP.cook(self, [piece, points], sub_p, ctx))
+    return merge(results)
+
+
+CopyToPointsSOP._cook_variants = _copy_variants
 
 
 @register_sop
