@@ -336,44 +336,43 @@ class Geometry:
         sums[self.prim_sizes() == 0] = 0
         return sums / sizes
 
+    def _next_vertex(self):
+        """Index of the next vertex within each primitive (wrapping)."""
+        idx = np.arange(self.num_vertices)
+        nxt = idx + 1
+        sizes = self.prim_sizes()
+        nz = sizes > 0
+        nxt[(self.prim_start[1:] - 1)[nz]] = self.prim_start[:-1][nz]
+        return nxt
+
+    def _sum_per_prim(self, values):
+        """Sum per-vertex values over each primitive (vertices of a prim are contiguous)."""
+        out = np.zeros((self.num_prims,) + values.shape[1:])
+        sizes = self.prim_sizes()
+        nz = sizes > 0
+        if nz.any():
+            out[nz] = np.add.reduceat(values, self.prim_start[:-1][nz], axis=0)
+        return out
+
     def prim_normals(self):
         """Newell's method normals for each primitive (unit length)."""
-        n = self.num_prims
-        if n == 0:
+        if self.num_prims == 0:
             return np.zeros((0, 3))
-        P = self.P[self.vtx_point]
-        idx = np.arange(len(P))
-        # Next vertex index within each primitive (wrapping).
-        vp = self.vertex_prim()
-        nxt = idx + 1
-        last = self.prim_start[1:] - 1
-        nxt[last[self.prim_sizes() > 0]] = self.prim_start[:-1][self.prim_sizes() > 0]
-        a = P
-        b = P[nxt]
-        cross = np.stack([
-            (a[:, 1] - b[:, 1]) * (a[:, 2] + b[:, 2]),
-            (a[:, 2] - b[:, 2]) * (a[:, 0] + b[:, 0]),
-            (a[:, 0] - b[:, 0]) * (a[:, 1] + b[:, 1]),
-        ], axis=1)
-        N = np.zeros((n, 3))
-        np.add.at(N, vp, cross)
+        a = self.P[self.vtx_point]
+        b = a[self._next_vertex()]
+        cross = np.empty_like(a)
+        cross[:, 0] = (a[:, 1] - b[:, 1]) * (a[:, 2] + b[:, 2])
+        cross[:, 1] = (a[:, 2] - b[:, 2]) * (a[:, 0] + b[:, 0])
+        cross[:, 2] = (a[:, 0] - b[:, 0]) * (a[:, 1] + b[:, 1])
+        N = self._sum_per_prim(cross)
         ln = np.linalg.norm(N, axis=1, keepdims=True)
         return N / np.where(ln == 0, 1, ln)
 
     def prim_areas(self):
-        n = self.num_prims
-        if n == 0:
+        if self.num_prims == 0:
             return np.zeros(0)
         P = self.P[self.vtx_point]
-        vp = self.vertex_prim()
-        idx = np.arange(len(P))
-        nxt = idx + 1
-        last = self.prim_start[1:] - 1
-        nz = self.prim_sizes() > 0
-        nxt[last[nz]] = self.prim_start[:-1][nz]
-        cr = np.cross(P, P[nxt])
-        tot = np.zeros((n, 3))
-        np.add.at(tot, vp, cr)
+        tot = self._sum_per_prim(np.cross(P, P[self._next_vertex()]))
         area = 0.5 * np.linalg.norm(tot, axis=1)
         area[~self.prim_closed] = 0.0
         return area
@@ -383,7 +382,9 @@ class Geometry:
         N = np.zeros((self.num_points, 3))
         if self.num_prims:
             fn = self.prim_normals() * np.maximum(self.prim_areas(), 1e-12)[:, None]
-            np.add.at(N, self.vtx_point, fn[self.vertex_prim()])
+            vfn = fn[self.vertex_prim()]
+            for k in range(3):
+                N[:, k] = np.bincount(self.vtx_point, weights=vfn[:, k], minlength=self.num_points)
         ln = np.linalg.norm(N, axis=1, keepdims=True)
         N = N / np.where(ln == 0, 1, ln)
         N[ln[:, 0] == 0] = (0, 1, 0)
