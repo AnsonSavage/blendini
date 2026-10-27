@@ -358,6 +358,19 @@ class TestSmoke(unittest.TestCase):
                         pass
 
 
+class TestPresets(unittest.TestCase):
+    def test_presets_run(self):
+        from blendini.vex.presets import PRESETS
+        g = cook_sop('normal', [cook_sop('sphere')])
+        channels = {'amp': 0.3, 'freq': 2.0, 'seed': 0.0, 'min_scale': 0.05, 'max_scale': 0.2, 'keep': 0.5,
+                    'radius': 0.5, 'maxpts': 5, 'speed': 1.0, 'degrees_per_unit': 45.0, 'count': 50, 'turns': 4.0,
+                    'height': 3.0, 'distance': 0.1}
+        for name, code in PRESETS:
+            with self.subTest(preset=name):
+                run_over = 'prim' if 'Primitive' in name else 'detail' if '(Detail)' in name else 'point'
+                run_wrangle(code, [g], run_over=run_over, channels=channels, time=1.0, frame=25)
+
+
 class TestMoreSops(unittest.TestCase):
     def test_pcfilter_smooths(self):
         g = cook_sop('pointwrangle', [_grid(9)], snippet='f@v = @ptnum % 2;')

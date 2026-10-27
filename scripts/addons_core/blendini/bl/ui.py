@@ -133,6 +133,7 @@ def _draw_code(node, layout, compact):
     op.node_name = node.name
     op = row.operator("blendini.create_spare_parms", text="", icon='ADD')
     op.node_name = node.name
+    row.menu("BLENDINI_MT_vex_presets", text="", icon='PRESET')
     row.operator("blendini.vex_functions", text="", icon='HELP')
     if node.text is not None:
         row = box.row(align=True)
@@ -374,6 +375,52 @@ class BLENDINI_OT_copy_text(bpy.types.Operator):
         context.window_manager.clipboard = self.text
         self.report({'INFO'}, "Copied '%s'" % self.text)
         return {'FINISHED'}
+
+
+class BLENDINI_OT_apply_preset(bpy.types.Operator):
+    """Replace the wrangle code with this preset (spare parameters are created for its ch() calls)"""
+    bl_idname = "blendini.apply_preset"
+    bl_label = "Apply VEX Preset"
+    bl_options = {'REGISTER', 'UNDO'}
+    index: bpy.props.IntProperty()
+
+    def execute(self, context):
+        from ..vex.presets import PRESETS
+        tree, node = _active_node(context)
+        if node is None or not hasattr(node, 'p_snippet'):
+            return {'CANCELLED'}
+        name, code = PRESETS[self.index]
+        if node.text is not None:
+            node.text.clear()
+            node.text.write(code)
+        node.p_snippet = code
+        if 'Primitive' in name and hasattr(node, 'p_class'):
+            node.p_class = 'prim'
+        if '(Detail)' in name and hasattr(node, 'p_class'):
+            node.p_class = 'detail'
+        bpy.ops.blendini.create_spare_parms(node_name=node.name)
+        # Sensible defaults for the new spare parameters.
+        defaults = {'amp': 0.3, 'freq': 2.0, 'seed': 0.0, 'min_scale': 0.05, 'max_scale': 0.2, 'keep': 0.5,
+                    'radius': 0.5, 'maxpts': 5, 'speed': 1.0, 'degrees_per_unit': 45.0, 'count': 200, 'turns': 4.0,
+                    'height': 3.0, 'distance': 0.1}
+        for sp in node.spare:
+            if sp.name in defaults:
+                if sp.kind == 'int':
+                    sp.i = int(defaults[sp.name])
+                elif sp.kind == 'float':
+                    sp.f = float(defaults[sp.name])
+        cook.request_cook(tree)
+        return {'FINISHED'}
+
+
+class BLENDINI_MT_vex_presets(bpy.types.Menu):
+    bl_idname = "BLENDINI_MT_vex_presets"
+    bl_label = "VEX Presets"
+
+    def draw(self, context):
+        from ..vex.presets import PRESETS
+        for i, (name, _code) in enumerate(PRESETS):
+            self.layout.operator("blendini.apply_preset", text=name).index = i
 
 
 class BLENDINI_OT_vex_functions(bpy.types.Operator):
@@ -1188,6 +1235,8 @@ classes = (
     BLENDINI_OT_toggle_bypass,
     BLENDINI_OT_cook,
     BLENDINI_OT_copy_text,
+    BLENDINI_OT_apply_preset,
+    BLENDINI_MT_vex_presets,
     BLENDINI_OT_vex_functions,
     BLENDINI_OT_dive_in,
     BLENDINI_OT_jump_up,

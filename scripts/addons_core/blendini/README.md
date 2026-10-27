@@ -68,7 +68,9 @@ Or step by step:
    highlighting, and the network **recooks live as you type**. A status bar at the bottom of
    the editor shows syntax and runtime errors, with line numbers, or the cook time. The
    **+** button creates spare parameters for every `ch("name")` call, like Houdini's
-   "create spare parameters" button. The **?** button lists every supported VEX function.
+   "create spare parameters" button. The presets menu holds ready-made snippets (noise
+   displacement, color by height, random pscale/orient, plexus lines, curl noise, twist,
+   ...). The **?** button lists every supported VEX function.
 
 Output objects get a *Blendini Cd* material, so renders show `Cd` (or per-instance `Cd`)
 like Houdini does, with grey as the fallback. Missing attributes are filled with Houdini's
