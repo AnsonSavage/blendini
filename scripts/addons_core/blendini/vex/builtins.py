@@ -1881,3 +1881,26 @@ def _lookat(I, args, mask, hint):
     to = _f(convert(args[1], 'vector'))
     up = _f(convert(args[2], 'vector')) if len(args) > 2 else np.array([[0.0, 1.0, 0.0]])
     return _maketransform(I, [V('vector', to - frm), V('vector', up)], mask, 'matrix3')
+
+
+@builtin('colormap', 'texture')
+def _colormap(I, args, mask, hint):
+    from ..core.images import image_pixels, sample
+    name = _uniform_str(args[0])
+    if len(args) >= 3:
+        u = _f(convert(args[1], 'float'))
+        v = _f(convert(args[2], 'float'))
+    else:
+        uv = _f(convert(args[1], 'vector'))
+        u, v = uv[:, 0], uv[:, 1]
+    try:
+        px = image_pixels(name)
+    except ImportError:
+        px = None
+    if px is None:
+        raise VexError("colormap: image '%s' not found" % name)
+    n = max(len(u), len(v))
+    rgba = sample(px, np.broadcast_to(u, (n,)), np.broadcast_to(v, (n,)))
+    if hint == 'vector4':
+        return V('vector4', rgba.astype(np.float64))
+    return V('vector', rgba[:, :3].astype(np.float64))

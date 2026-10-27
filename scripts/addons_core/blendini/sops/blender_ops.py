@@ -413,3 +413,41 @@ def _set_group_input(mod, key, value):
     if isinstance(value, (list, tuple)):
         value = tuple(value)
     _set_modifier_input(mod, ident, value)
+
+
+@register_sop
+class AttribFromMapSOP(SOP):
+    id = 'attribfrommap'
+    label = "Attribute from Map"
+    category = 'Attribute'
+    inputs = 1
+    icon = 'IMAGE_DATA'
+    parms = (
+        Parm('image', "Texture Map", 'image', description="Blender image name or file path"),
+        Parm('uvattrib', "UV Attribute", 'string', default='uv'),
+        Parm('exportattrib', "Export Attribute", 'string', default='Cd'),
+    )
+
+    def cook(self, inputs, p, ctx):
+        from ..core.images import image_pixels, sample
+        from ..core.geometry import POINT, VERTEX
+        from .attribs import promote
+        geo = _in(inputs).copy()
+        if not p.image:
+            return geo
+        px = image_pixels(p.image)
+        if px is None:
+            raise CookError("Image '%s' not found" % p.image)
+        cls = POINT
+        uv = geo.attribs[POINT].get(p.uvattrib)
+        if uv is None and p.uvattrib in geo.attribs[VERTEX]:
+            uv = geo.attribs[VERTEX][p.uvattrib]
+            cls = VERTEX
+        if uv is None:
+            raise CookError("No '%s' attribute (use a UV Texture SOP first)" % p.uvattrib)
+        rgba = sample(px, uv[:, 0], uv[:, 1]).astype(np.float64)
+        geo.attribs[cls][p.exportattrib or 'Cd'] = rgba[:, :3]
+        if cls == VERTEX and (p.exportattrib or 'Cd') == 'Cd':
+            # Also provide point colors so wrangles can read them.
+            geo.attribs[POINT]['Cd'] = promote(geo, rgba[:, :3], VERTEX, POINT, 'mean')
+        return geo

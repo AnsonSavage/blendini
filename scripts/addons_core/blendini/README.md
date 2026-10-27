@@ -67,7 +67,7 @@ Blender is Z-up and Houdini is Y-up. Output objects are rotated 90° around X so
 | Primitive | Box, Grid, Sphere (UV / icosahedron), Tube, Torus, Circle, Line, Platonic Solids, Bound, Font\*, L-System |
 | Manipulate| Transform, **Edit** (move points in Blender's Edit Mode, stored as offsets), Mountain, Point Jitter, Peak, Smooth, Ray\* |
 | Polygon   | Add, Fuse, Facet, Divide, Reverse, PolyExtrude, PolyWire, Sweep, Resample, Subdivide\*, PolyBevel\*, Boolean\*, Remesh\*, PolyReduce\*, Clip\* |
-| Attribute | Attribute Create / Delete / Rename / Promote / Randomize / Noise / Transfer, Color, Normal, Connectivity, Measure, UV Texture, PolyFrame |
+| Attribute | Attribute Create / Delete / Rename / Promote / Randomize / Noise / Transfer, Attribute from Map\*, Color, Normal, Connectivity, Measure, UV Texture, PolyFrame |
 | Group     | Group Create (pattern / bounding box / normal / random / `@expression`), Blast |
 | Copy      | Copy to Points (orient, N/up, pscale, scale, **Pack and Instance**), Unpack, Copy and Transform, Scatter |
 | VEX       | Attribute Wrangle, **Point Wrangle**, Primitive Wrangle, Detail Wrangle, **Solver (VEX)** |
@@ -115,7 +115,7 @@ Builtins (partial list):
 
 - Math: `sin cos tan asin acos atan atan2 sqrt pow exp log abs sign floor ceil frac round
   min max clamp fit fit01 fit10 fit11 efit lerp smooth avg sum`.
-- Color: `hsvtorgb rgbtohsv`.
+- Color and textures: `hsvtorgb rgbtohsv colormap texture` (Blender images by name or path).
 - Vectors: `length length2 distance distance2 normalize dot cross reflect set getcomp`.
 - Matrices and quaternions: `ident rotate scale translate transpose invert determinant
   maketransform lookat dihedral quaternion qconvert qrotate qmultiply slerp eulertoquaternion`.
