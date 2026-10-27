@@ -361,6 +361,19 @@ class TestMoreSops(unittest.TestCase):
         self.assertEqual(len(pieces), 3)
         self.assertTrue(all(p.num_points == 8 for p in pieces))
 
+    def test_vellum_pins_and_ground(self):
+        from blendini.sops import REGISTRY, default_parms, CookContext
+        cloth = cook_sop('xform', [cook_sop('grid', rows=8, cols=8, size=(2.0, 2.0))], t=(0.0, 1.0, 0.0))
+        sop = REGISTRY['vellum']
+        p = default_parms('vellum')
+        p['pingroup'] = '0'
+        state = {}
+        for f in range(1, 40):
+            out = sop.cook([cloth, None], p, CookContext(time=(f - 1) / 24, frame=f, fps=24, state=state))
+        np.testing.assert_allclose(out.P[0], cloth.P[0])
+        self.assertGreaterEqual(out.P[:, 1].min(), p.groundy + p.thickness - 1e-6)
+        self.assertLess(out.P[:, 1].mean(), 1.0)
+
     def test_obj_roundtrip(self):
         import os
         import tempfile
