@@ -1692,3 +1692,31 @@ class SubnetInputSOP(SOP):
 
     def cook(self, inputs, p, ctx):
         return Geometry()
+
+
+@register_sop
+class EditSOP(SOP):
+    id = 'edit'
+    label = "Edit"
+    category = 'Manipulate'
+    inputs = 1
+    icon = 'EDITMODE_HLT'
+    description = "Hand-edit point positions in Blender's Edit Mode (deltas are stored on the node)"
+    parms = (
+        Parm('blend', "Blend", 'float', default=1.0, min=0, max=1,
+             description="Scale the stored edits (0 = no edits, 1 = full)"),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs).copy()
+        deltas = getattr(ctx, 'edit_deltas', None)
+        if deltas is None or not len(deltas[0]):
+            return geo
+        idx, d = deltas
+        ok = idx < geo.num_points
+        if not ok.all():
+            ctx.warn("Some edits refer to points that no longer exist")
+        P = geo.P.copy()
+        P[idx[ok]] += d[ok] * p.blend
+        geo.P = P
+        return geo

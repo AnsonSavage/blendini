@@ -191,6 +191,13 @@ class BlendiniNodeBase:
     def channels(self):
         return {sp.name: sp.value() for sp in self.spare if sp.kind != 'ramp'}
 
+    def edit_deltas(self):
+        """Stored point edits of an Edit SOP: (indices, deltas)."""
+        import numpy as np
+        idx = np.asarray(self.get("edit_idx", []), dtype=np.int64)
+        d = np.asarray(self.get("edit_delta", []), dtype=np.float64).reshape(-1, 3)
+        return idx, d
+
     def ramps(self):
         from .ramps import sample
         return {sp.name: sample(sp.ramp_key) for sp in self.spare if sp.kind == 'ramp'}

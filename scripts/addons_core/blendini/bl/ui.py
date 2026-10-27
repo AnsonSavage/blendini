@@ -99,6 +99,14 @@ def draw_parms(node, context, layout, compact=False):
             col.prop(node, pname, text=parm.label)
     if sop.category == 'VEX':
         _draw_spare(node, layout, compact)
+    if sop.id == 'edit':
+        idx, d = node.edit_deltas()
+        box = layout.box()
+        box.label(text="%d edited points" % len(idx), icon='EDITMODE_HLT')
+        col2 = box.column(align=True)
+        col2.operator("blendini.edit_begin", icon='EDITMODE_HLT')
+        col2.operator("blendini.edit_commit", icon='CHECKMARK')
+        col2.operator("blendini.edit_clear", icon='X')
     if sop.id == 'subnet':
         row = layout.row(align=True)
         row.prop(node, "subtree", text="")
@@ -242,6 +250,104 @@ class BLENDINI_OT_jump_up(bpy.types.Operator):
 
     def execute(self, context):
         context.space_data.path.pop()
+        return {'FINISHED'}
+
+
+def _edit_node(context):
+    tree, node = _active_node(context)
+    if node is None or node.sop_id != 'edit':
+        return None, None
+    return tree, node
+
+
+class BLENDINI_OT_edit_begin(bpy.types.Operator):
+    """Show this Edit node's result and enter Edit Mode on the output object to move points by hand"""
+    bl_idname = "blendini.edit_begin"
+    bl_label = "Edit Points in Viewport"
+
+    @classmethod
+    def poll(cls, context):
+        return _edit_node(context)[1] is not None
+
+    def execute(self, context):
+        tree, node = _edit_node(context)
+        for n in tree.nodes:
+            if isinstance(n, BlendiniNodeBase):
+                n.display_flag = (n == node)
+        cook.cook_tree(tree)
+        obj = tree.target
+        if obj is None:
+            return {'CANCELLED'}
+        if context.view_layer.objects.get(obj.name) is None:
+            self.report({'ERROR'}, "The output object is not in the current view layer")
+            return {'CANCELLED'}
+        if context.object is not None and context.object.mode != 'OBJECT':
+            bpy.ops.object.mode_set(mode='OBJECT')
+        for o in context.view_layer.objects:
+            o.select_set(False)
+        obj.select_set(True)
+        context.view_layer.objects.active = obj
+        bpy.ops.object.mode_set(mode='EDIT')
+        self.report({'INFO'}, "Move points, then press 'Commit Edits' on the Edit node")
+        return {'FINISHED'}
+
+
+class BLENDINI_OT_edit_commit(bpy.types.Operator):
+    """Leave Edit Mode and store the point offsets on the Edit node"""
+    bl_idname = "blendini.edit_commit"
+    bl_label = "Commit Edits"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return _edit_node(context)[1] is not None
+
+    def execute(self, context):
+        import numpy as np
+        tree, node = _edit_node(context)
+        obj = tree.target
+        if obj is None:
+            return {'CANCELLED'}
+        if obj.mode == 'EDIT':
+            with context.temp_override(active_object=obj, object=obj):
+                bpy.ops.object.mode_set(mode='OBJECT')
+        ups = cook._input_nodes(node.inputs[0])
+        if not ups:
+            return {'CANCELLED'}
+        scene = context.scene
+        base = cook.node_geometry(ups[0])
+        mesh = obj.data
+        if base is None or len(mesh.vertices) != base.num_points:
+            self.report({'ERROR'}, "Point count changed: the Edit node only supports moving points")
+            cook.request_cook(tree)
+            return {'CANCELLED'}
+        co = np.empty(len(mesh.vertices) * 3, dtype=np.float32)
+        mesh.vertices.foreach_get("co", co)
+        delta = co.reshape(-1, 3).astype(np.float64) - base.P
+        moved = np.nonzero(np.linalg.norm(delta, axis=1) > 1e-6)[0]
+        node["edit_idx"] = moved.tolist()
+        node["edit_delta"] = delta[moved].ravel().tolist()
+        cook.request_cook(tree)
+        cook.cook_tree(tree)
+        self.report({'INFO'}, "Stored edits for %d points" % len(moved))
+        return {'FINISHED'}
+
+
+class BLENDINI_OT_edit_clear(bpy.types.Operator):
+    """Remove all stored edits from the Edit node"""
+    bl_idname = "blendini.edit_clear"
+    bl_label = "Clear Edits"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return _edit_node(context)[1] is not None
+
+    def execute(self, context):
+        tree, node = _edit_node(context)
+        node["edit_idx"] = []
+        node["edit_delta"] = []
+        cook.cook_tree(tree)
         return {'FINISHED'}
 
 
@@ -967,6 +1073,9 @@ classes = (
     BLENDINI_OT_cook,
     BLENDINI_OT_dive_in,
     BLENDINI_OT_jump_up,
+    BLENDINI_OT_edit_begin,
+    BLENDINI_OT_edit_commit,
+    BLENDINI_OT_edit_clear,
     BLENDINI_OT_edit_code,
     BLENDINI_OT_create_spare_parms,
     BLENDINI_OT_remove_spare_parm,

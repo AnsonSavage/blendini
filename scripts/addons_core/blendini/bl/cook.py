@@ -194,6 +194,9 @@ def cook_node(node, ctx_base, visiting=None):
         parms = node.parm_values()
         channels = node.channels()
         ramps = node.ramps() if len(node.spare) else {}
+        if sop.id == 'edit':
+            idx, d = node.edit_deltas()
+            channels = dict(channels, __edits=(tuple(idx.tolist()), tuple(d.ravel().round(6).tolist())))
         time_dep = _is_time_dependent(node, parms) or ctx_base['animated']
         sig = (
             sop.id, node.mute,
@@ -218,6 +221,8 @@ def cook_node(node, ctx_base, visiting=None):
                           node_path=node.name, state=_states.setdefault(key, {}))
         ctx.channels = channels
         ctx.ramps = ramps
+        if sop.id == 'edit':
+            ctx.edit_deltas = node.edit_deltas()
         t0 = time.perf_counter()
         error = None
         try:
@@ -437,6 +442,9 @@ def cook_tree(tree, frame=None):
                 except CookError:
                     pass
         obj = ensure_target(tree)
+        if obj.mode == 'EDIT':
+            # Never overwrite a mesh that is being edited (Edit SOP workflow).
+            return geo
         tkey = ('__written__', _tree_key(tree))
         if _cache.get(tkey) != (sig, obj.data.name) or sig is None:
             from .mesh_io import geo_to_mesh
