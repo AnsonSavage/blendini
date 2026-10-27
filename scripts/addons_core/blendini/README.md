@@ -42,8 +42,7 @@ Or step by step:
    plus its SOP network, like `/obj/geo1`) and opens the network in a node editor.
 3. Or use *Add → Blendini Examples* to build thirteen example networks: ripple, scatter and
    copy, plexus, city, particles, for-each, L-system tree, Vellum cloth, fracture, RBD
-   fracture, eroded terrain, fluid dam break and spiral. Press
-   play for the simulations.
+   fracture, eroded terrain, fluid dam break and spiral. Press play for the simulations.
 4. In the node editor:
    - **Tab**: Houdini-style TAB menu (start typing to search). With a node selected, the new
      node is wired to its output and takes over the display flag, like Houdini.
@@ -67,9 +66,9 @@ Or step by step:
      the node editor, or the 3D viewport's sidebar.
 5. On a wrangle, click **Edit**. The VEX code opens in a Text Editor, with C-like syntax
    highlighting, and the network **recooks live as you type**. A status bar at the bottom of
-   the editor shows syntax and runtime errors, with line numbers, or the cook time. The **+** button creates
-   spare parameters for every `ch("name")` call, like Houdini's "create spare parameters"
-   button.
+   the editor shows syntax and runtime errors, with line numbers, or the cook time. The
+   **+** button creates spare parameters for every `ch("name")` call, like Houdini's
+   "create spare parameters" button. The **?** button lists every supported VEX function.
 
 Output objects get a *Blendini Cd* material, so renders show `Cd` (or per-instance `Cd`)
 like Houdini does, with grey as the fallback. Missing attributes are filled with Houdini's
@@ -83,18 +82,20 @@ Blender is Z-up and Houdini is Y-up. Output objects are rotated 90° around X so
 | Category  | SOPs |
 |-----------|------|
 | Primitive | Box, Grid, Sphere (UV / icosahedron), Tube, Torus, Circle, Line, Platonic Solids, Bound, Font\*, L-System |
-| Manipulate| Match Size, **Fluid Solver (PBF)** (experimental particle fluid in a box), **RBD Bullet Solver\*** (Blender's rigid bodies in a private scene), **Vellum Cloth (PBD)** (stretch/bend constraints, pins, ground, colliders), Transform, **Edit** (move points in Blender's Edit Mode, stored as offsets), Mountain, Point Jitter, Peak, Smooth, Ray\* |
+| Manipulate| Transform, Match Size, **Edit** (move points in Blender's Edit Mode, stored as offsets), Mountain, Point Jitter, Peak, Smooth, Ray\* |
+| Simulation| **Solver (VEX)** (SOP Solver), **Vellum Cloth (PBD)** (stretch/bend constraints, pins, ground, colliders), **RBD Bullet Solver\*** (Blender's rigid bodies in a private scene), **Fluid Solver (PBF)** (experimental particle fluid in a box) |
 | Polygon   | **Voronoi Fracture\***, Particle Fluid Surface\* (OpenVDB meshing), Add, Clean, Ends, Fuse, Facet, Divide, Reverse, PolyExtrude, PolyWire, Sweep, Resample, Subdivide\*, PolyBevel\*, Boolean\*, Remesh\*, PolyReduce\*, Clip\* |
 | Attribute | Attribute Create / Delete / Rename / Copy / Promote / Randomize / Noise / Transfer, Name, Attribute from Map\*, Color, Normal, Connectivity, Measure, UV Texture, PolyFrame, Trail (velocity, also feeds Blender motion blur) |
 | Terrain   | HeightField, HeightField Noise (fBm / ridged), HeightField Erode (thermal + flow-based hydraulic) |
 | Group     | Group Create (pattern / bounding box / normal / random / `@expression`), Blast |
 | Copy      | Copy to Points (orient, N/up, pscale, scale, piece variants, **Pack and Instance**), Pack, Unpack, Assemble, Copy and Transform, Scatter, Points from Volume\* |
-| VEX       | Attribute Wrangle (run over points / prims / vertices / detail / numbers), **Point Wrangle**, Primitive Wrangle, Detail Wrangle, **Solver (VEX)** |
+| VEX       | Attribute Wrangle (run over points / prims / vertices / detail / numbers), **Point Wrangle**, Primitive Wrangle, Detail Wrangle |
 | Utility   | File (.obj), **Subnetwork** + Subnet Input (dive in with I, up with U), Merge (multi-input), Switch, Null, Output, Sort, Time Shift, **Block Begin / Block End (For-Each pieces or feedback)** |
 | Blender   | Object Merge (meshes and curves), Solidify\*, **Blender Modifier\*** (any modifier, including Geometry Nodes groups) |
 
-\* These use Blender as the backend: the geometry passes through a real Blender modifier
-or `bmesh` operator and comes back with its attributes.
+\* These use Blender as the backend. The geometry passes through a real Blender modifier,
+`bmesh` operator, BVH tree, Bullet rigid body world or OpenVDB Geometry Nodes, and comes
+back with its attributes.
 
 **Packed geometry**: when *Pack and Instance* is on, Copy to Points outputs one point per copy
 that references the source geometry, the same as Houdini's packed primitives. Transform,
