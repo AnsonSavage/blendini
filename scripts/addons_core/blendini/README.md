@@ -70,7 +70,7 @@ Blender is Z-up and Houdini is Y-up. Output objects are rotated 90° around X so
 |-----------|------|
 | Primitive | Box, Grid, Sphere (UV / icosahedron), Tube, Torus, Circle, Line, Platonic Solids, Bound, Font\*, L-System |
 | Manipulate| **Fluid Solver (PBF)** (experimental particle fluid in a box), **RBD Bullet Solver\*** (Blender's rigid bodies in a private scene), **Vellum Cloth (PBD)** (stretch/bend constraints, pins, ground, colliders), Transform, **Edit** (move points in Blender's Edit Mode, stored as offsets), Mountain, Point Jitter, Peak, Smooth, Ray\* |
-| Polygon   | **Voronoi Fracture\***, Add, Clean, Ends, Fuse, Facet, Divide, Reverse, PolyExtrude, PolyWire, Sweep, Resample, Subdivide\*, PolyBevel\*, Boolean\*, Remesh\*, PolyReduce\*, Clip\* |
+| Polygon   | **Voronoi Fracture\***, Particle Fluid Surface\* (OpenVDB meshing), Add, Clean, Ends, Fuse, Facet, Divide, Reverse, PolyExtrude, PolyWire, Sweep, Resample, Subdivide\*, PolyBevel\*, Boolean\*, Remesh\*, PolyReduce\*, Clip\* |
 | Attribute | Attribute Create / Delete / Rename / Promote / Randomize / Noise / Transfer, Attribute from Map\*, Color, Normal, Connectivity, Measure, UV Texture, PolyFrame, Trail (velocity, also feeds Blender motion blur) |
 | Terrain   | HeightField, HeightField Noise (fBm / ridged), HeightField Erode (thermal + flow-based hydraulic) |
 | Group     | Group Create (pattern / bounding box / normal / random / `@expression`), Blast |

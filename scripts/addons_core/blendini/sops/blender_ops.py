@@ -730,3 +730,66 @@ def _hull_volume(geo):
     A, B, C = geo.P[tris[:, 0]], geo.P[tris[:, 1]], geo.P[tris[:, 2]]
     vol = abs(np.sum(np.einsum('ij,ij->i', A, np.cross(B, C))) / 6.0)
     return vol if vol > 1e-9 else 1.0
+
+
+def _surface_group():
+    name = "Blendini Particle Surface"
+    ng = bpy.data.node_groups.get(name)
+    if ng is not None:
+        return ng
+    ng = bpy.data.node_groups.new(name, 'GeometryNodeTree')
+    ng.interface.new_socket(name="Geometry", in_out='INPUT', socket_type='NodeSocketGeometry')
+    for sock_name, default in (("Voxel Size", 0.05), ("Radius", 0.1), ("Threshold", 0.1)):
+        s = ng.interface.new_socket(name=sock_name, in_out='INPUT', socket_type='NodeSocketFloat')
+        s.default_value = default
+    ng.interface.new_socket(name="Geometry", in_out='OUTPUT', socket_type='NodeSocketGeometry')
+    N, L = ng.nodes, ng.links
+    gin = N.new('NodeGroupInput')
+    gout = N.new('NodeGroupOutput')
+    to_pts = N.new('GeometryNodeMeshToPoints')
+    to_vol = N.new('GeometryNodePointsToVolume')
+    try:
+        to_vol.resolution_mode = 'VOXEL_SIZE'
+    except (AttributeError, TypeError):
+        pass
+    to_mesh = N.new('GeometryNodeVolumeToMesh')
+    L.new(gin.outputs[0], to_pts.inputs['Mesh'])
+    L.new(to_pts.outputs[0], to_vol.inputs['Points'])
+    L.new(gin.outputs['Voxel Size'], to_vol.inputs['Voxel Size'])
+    L.new(gin.outputs['Radius'], to_vol.inputs['Radius'])
+    L.new(to_vol.outputs[0], to_mesh.inputs['Volume'])
+    L.new(gin.outputs['Threshold'], to_mesh.inputs['Threshold'])
+    L.new(to_mesh.outputs[0], gout.inputs[0])
+    return ng
+
+
+@register_sop
+class ParticleFluidSurfaceSOP(SOP):
+    id = 'particlefluidsurface'
+    label = "Particle Fluid Surface"
+    category = 'Polygon'
+    inputs = 1
+    icon = 'MOD_OCEAN'
+    description = "Mesh a point cloud (e.g. fluid particles) through an OpenVDB volume"
+    parms = (
+        Parm('particlesep', "Particle Separation", 'float', default=0.08, min=0.001, soft_max=1),
+        Parm('radiusscale', "Influence Scale", 'float', default=1.6, min=0.1, soft_max=4),
+        Parm('voxelscale', "Voxel Scale", 'float', default=0.5, min=0.05, soft_max=2),
+        Parm('threshold', "Iso Threshold", 'float', default=0.3, min=0.0, soft_max=2),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs)
+        if geo.num_points == 0:
+            return Geometry()
+        pts = Geometry()
+        pts.P = geo.P
+        ng = _surface_group()
+
+        def settings(mod, _):
+            mod.node_group = ng
+            vals = {"Voxel Size": p.particlesep * p.voxelscale, "Radius": p.particlesep * p.radiusscale,
+                    "Threshold": p.threshold}
+            for name, value in vals.items():
+                _set_group_input(mod, name, float(value))
+        return apply_modifier(pts, 'NODES', settings)

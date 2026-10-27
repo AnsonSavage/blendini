@@ -292,8 +292,9 @@ def build_examples():
     blk = _node(t, 'box', (0, 600), size=(1.2, 1.6, 1.8), t=(-1.35, 0.8, 0.0))
     pfv = _node(t, 'pointsfromvolume', (0, 400), pointsep=0.08)
     fl = _node(t, 'fluidsolver', (0, 200), particlesep=0.08, boxmin=(-2.0, 0.0, -0.9), boxmax=(2.0, 3.0, 0.9))
-    col = _node(t, 'pointwrangle', (0, 0), snippet='@Cd = lerp({0.05, 0.25, 0.8}, {0.8, 0.95, 1.0}, fit(length(v@v), 0, 3, 0, 1));')
-    _chain(t, [blk, pfv, fl, col])
+    surf = _node(t, 'particlefluidsurface', (0, 0), particlesep=0.08)
+    col = _node(t, 'pointwrangle', (0, -200), snippet='@Cd = {0.1, 0.35, 0.8};')
+    _chain(t, [blk, pfv, fl, surf, col])
     _finish(t, col)
     trees.append(t)
 
