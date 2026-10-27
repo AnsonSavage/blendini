@@ -2062,3 +2062,158 @@ class AssembleSOP(SOP):
         from . import cook_sop
         named = cook_sop('name', [_in(inputs)], prefix=p.prefix)
         return cook_sop('pack', [named]) if p.pack else named
+
+
+@register_sop
+class GroupCombineSOP(SOP):
+    id = 'groupcombine'
+    label = "Group Combine"
+    category = 'Group'
+    inputs = 1
+    icon = 'SELECT_INTERSECT'
+    parms = (
+        Parm('grouptype', "Group Type", 'enum', items=CLASS_PP),
+        Parm('result', "Result Group", 'string', default='combined'),
+        Parm('a', "Group A", 'string', default='group1'),
+        Parm('op', "Operation", 'enum', items=[('union', "Union (A or B)", ""), ('intersect', "Intersect (A and B)", ""),
+                                               ('subtract', "Subtract (A and not B)", ""), ('xor', "Exclusive Or", "")]),
+        Parm('b', "Group B", 'string', default='group2'),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs).copy()
+        A = parse_group_pattern(geo, p.grouptype, p.a)
+        B = parse_group_pattern(geo, p.grouptype, p.b)
+        r = {'union': A | B, 'intersect': A & B, 'subtract': A & ~B, 'xor': A ^ B}[p.op]
+        geo.groups[p.grouptype][p.result or 'combined'] = r
+        return geo
+
+
+@register_sop
+class GroupPromoteSOP(SOP):
+    id = 'grouppromote'
+    label = "Group Promote"
+    category = 'Group'
+    inputs = 1
+    icon = 'SORT_ASC'
+    parms = (
+        Parm('group', "Group", 'string', default='group1'),
+        Parm('convertfrom', "Convert From", 'enum', items=[('prim', "Primitives", ""), ('point', "Points", "")]),
+        Parm('onlyfull', "Include Only Elements Entirely Contained", 'bool', default=False),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs).copy()
+        src = p.convertfrom
+        g = geo.groups[src].pop(p.group, None)
+        if g is None:
+            raise CookError("No %s group '%s'" % (src, p.group))
+        vp = geo.vertex_prim()
+        if src == PRIM:
+            out = np.zeros(geo.num_points, dtype=bool)
+            out[geo.vtx_point[g[vp]]] = True
+            if p.onlyfull:
+                outside = np.zeros(geo.num_points, dtype=bool)
+                outside[geo.vtx_point[~g[vp]]] = True
+                out &= ~outside
+            geo.groups[POINT][p.group] = out
+        else:
+            hits = np.bincount(vp, weights=g[geo.vtx_point].astype(np.float64), minlength=geo.num_prims)
+            sizes = geo.prim_sizes()
+            geo.groups[PRIM][p.group] = (hits >= sizes) if p.onlyfull else (hits > 0)
+        return geo
+
+
+@register_sop
+class CarveSOP(SOP):
+    id = 'carve'
+    label = "Carve"
+    category = 'Polygon'
+    inputs = 1
+    icon = 'SNAP_MIDPOINT'
+    parms = (
+        Parm('domainu1', "First U", 'float', default=0.0, min=0, max=1),
+        Parm('domainu2', "Second U", 'float', default=0.5, min=0, max=1),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs)
+        u0, u1 = sorted((p.domainu1, p.domainu2))
+        out_P, polys = [], []
+        offset = 0
+        for i in range(geo.num_prims):
+            if geo.prim_closed[i]:
+                continue
+            pts = geo.prim_points(i)
+            P = geo.P[pts]
+            seg = np.linalg.norm(np.diff(P, axis=0), axis=1)
+            cum = np.concatenate([[0], np.cumsum(seg)])
+            total = cum[-1]
+            if len(P) < 2 or total == 0:
+                continue
+            t0, t1 = u0 * total, u1 * total
+            inner = (cum > t0) & (cum < t1)
+            ts = np.concatenate([[t0], cum[inner], [t1]])
+            newP = np.stack([np.interp(ts, cum, P[:, k]) for k in range(3)], axis=1)
+            out_P.append(newP)
+            polys.append(list(range(offset, offset + len(newP))))
+            offset += len(newP)
+        out = Geometry()
+        if out_P:
+            out.P = np.concatenate(out_P)
+            out.add_prims(polys, closed=False)
+        return out
+
+
+def _axis_frame(axis):
+    a = {'X': 0, 'Y': 1, 'Z': 2}[axis]
+    return a, [i for i in range(3) if i != a]
+
+
+@register_sop
+class BendSOP(SOP):
+    id = 'bend'
+    label = "Bend"
+    category = 'Manipulate'
+    inputs = 1
+    icon = 'MOD_SIMPLEDEFORM'
+    description = "Bend, twist and taper along an axis (Houdini's Bend SOP)"
+    parms = (
+        Parm('axis', "Capture Axis", 'enum', items=[('Y', "Y", ""), ('X', "X", ""), ('Z', "Z", "")]),
+        Parm('origin', "Capture Origin", 'vector'),
+        Parm('length', "Capture Length", 'float', default=1.0, min=0.0001),
+        Parm('bend', "Bend (degrees)", 'float', default=90.0, soft_min=-360, soft_max=360),
+        Parm('twist', "Twist (degrees)", 'float', default=0.0, soft_min=-720, soft_max=720),
+        Parm('taper', "Taper (end scale)", 'float', default=1.0, min=0, soft_max=2),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs).copy()
+        if geo.num_points == 0:
+            return geo
+        a, (b, c) = _axis_frame(p.axis)
+        P = geo.P - np.asarray(p.origin)
+        t = np.clip(P[:, a] / p.length, 0.0, 1.0)
+        over = np.maximum(P[:, a] - p.length, 0.0)
+        Q = P.copy()
+        # Taper and twist around the capture axis.
+        scale = 1.0 + (p.taper - 1.0) * t
+        tw = np.radians(p.twist) * t
+        cb, cc = Q[:, b] * scale, Q[:, c] * scale
+        Q[:, b] = cb * np.cos(tw) - cc * np.sin(tw)
+        Q[:, c] = cb * np.sin(tw) + cc * np.cos(tw)
+        # Bend in the (a, b) plane around a circle of radius length / angle.
+        ang_total = np.radians(p.bend)
+        if abs(ang_total) > 1e-9:
+            R = p.length / ang_total
+            theta = t * ang_total
+            r = R - Q[:, b]
+            new_a = r * np.sin(theta)
+            new_b = R - r * np.cos(theta)
+            # Points before the capture region are untouched, beyond it they continue straight.
+            before = P[:, a] < 0
+            new_a = np.where(before, Q[:, a], new_a + over * np.cos(theta))
+            new_b = np.where(before, Q[:, b], new_b + over * np.sin(theta))
+            Q[:, a], Q[:, b] = new_a, new_b
+        geo.P = Q + np.asarray(p.origin)
+        return geo
