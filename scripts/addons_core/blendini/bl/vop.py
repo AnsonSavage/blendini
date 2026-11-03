@@ -24,12 +24,12 @@ def _request_owner_cook(self, context=None):
 
 def request_owner_cook(vop_tree):
     from . import cook
-    from .tree import TREE_ID
+    from .tree import TREE_ID, node_vop_tree
     for tree in bpy.data.node_groups:
         if tree.bl_idname != TREE_ID:
             continue
         for node in tree.nodes:
-            if getattr(node, 'sop_id', '') == 'attribvop' and node.p_voptree == vop_tree.name:
+            if getattr(node, 'sop_id', '') == 'attribvop' and node_vop_tree(node) == vop_tree:
                 cook.request_cook(tree)
                 break
 

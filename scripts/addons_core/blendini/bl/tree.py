@@ -133,6 +133,9 @@ class BlendiniNodeBase:
     text: PointerProperty(name="Code Text", type=bpy.types.Text, update=_request_cook,
                           description="Text datablock holding the VEX code (edit in the Text Editor)")
     spare: CollectionProperty(type=BlendiniSpareParm)
+    vop_tree: PointerProperty(name="VOP Network", type=bpy.types.NodeTree, update=_request_cook,
+                              poll=lambda self, t: t.bl_idname == 'BlendiniVOPTree',
+                              description="The VOP network of an Attribute VOP (dive in with I)")
     subtree: PointerProperty(name="Network", type=bpy.types.NodeTree, update=_request_cook,
                              poll=lambda self, t: t.bl_idname == TREE_ID and t != self.id_data,
                              description="The network inside this subnet")
@@ -164,7 +167,9 @@ class BlendiniNodeBase:
             self.subtree = make_subnet_tree(tree, self.name)
         if sop.id == 'attribvop':
             from .vop import make_default_vop_tree
-            self.p_voptree = make_default_vop_tree("%s/%s" % (tree.name, self.name)).name
+            vt = make_default_vop_tree("%s/%s" % (tree.name, self.name))
+            self.vop_tree = vt
+            self.p_voptree = vt.name
         update_colors(tree)
 
     def copy(self, node):
@@ -207,7 +212,8 @@ class BlendiniNodeBase:
             values['snippet'] = self.text.as_string()
         if self.sop_id == 'attribvop':
             from .vop import generate_vex
-            vt = bpy.data.node_groups.get(values.get('voptree', ''))
+            vt = node_vop_tree(self)
+            values['voptree'] = vt.name if vt is not None else ""
             try:
                 values['snippet'] = generate_vex(vt) if vt is not None else ''
             except ValueError as ex:
@@ -227,6 +233,14 @@ class BlendiniNodeBase:
     def ramps(self):
         from .ramps import sample
         return {sp.name: sample(sp.ramp_key) for sp in self.spare if sp.kind == 'ramp'}
+
+
+def node_vop_tree(node):
+    """The VOP network of an Attribute VOP node (pointer, falling back to the stored name)."""
+    vt = getattr(node, 'vop_tree', None)
+    if vt is None:
+        vt = bpy.data.node_groups.get(getattr(node, 'p_voptree', "") or "")
+    return vt
 
 
 def make_subnet_tree(owner, name):

@@ -105,7 +105,7 @@ def draw_parms(node, context, layout, compact=False):
         elif parm.type == 'image':
             col.prop_search(node, pname, bpy.data, "images", text=parm.label)
         elif parm.type == 'vopnetwork':
-            col.prop_search(node, pname, bpy.data, "node_groups", text=parm.label)
+            col.prop(node, "vop_tree", text=parm.label)
         elif parm.type in ('vector', 'vector2') and not compact:
             row = col.row(align=True)
             row.prop(node, pname, text=parm.label)
@@ -264,13 +264,15 @@ class BLENDINI_OT_dive_in(bpy.types.Operator):
             return False
         if node.sop_id == 'subnet':
             return node.subtree is not None
-        return node.sop_id == 'attribvop' and bpy.data.node_groups.get(node.p_voptree) is not None
+        from .tree import node_vop_tree
+        return node.sop_id == 'attribvop' and node_vop_tree(node) is not None
 
     def execute(self, context):
         tree, node = _active_node(context)
         if node.sop_id == 'attribvop':
             from .vop import VOP_TREE_ID
-            vt = bpy.data.node_groups[node.p_voptree]
+            from .tree import node_vop_tree
+            vt = node_vop_tree(node)
             space = context.space_data
             # VOP networks are a different tree type: show it directly (U comes back).
             _vop_return[vt.name] = space.node_tree.name if space.node_tree else ''
@@ -301,7 +303,8 @@ class BLENDINI_OT_vop_jump_up(bpy.types.Operator):
         back = bpy.data.node_groups.get(_vop_return.get(vt.name, '')) if vt else None
         if back is None:
             for t in cook.all_trees():
-                if any(getattr(n, 'p_voptree', None) == (vt.name if vt else None) for n in t.nodes):
+                from .tree import node_vop_tree
+                if any(getattr(n, 'sop_id', '') == 'attribvop' and node_vop_tree(n) == vt for n in t.nodes):
                     back = t
                     break
         space.tree_type = TREE_ID

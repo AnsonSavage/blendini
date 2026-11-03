@@ -342,7 +342,8 @@ def build_examples():
     vopn = _node(t, 'attribvop', (0, 0))
     _chain(t, [sph, vopn])
     _finish(t, vopn)
-    _build_displace_vop(bpy.data.node_groups[vopn.p_voptree])
+    from .tree import node_vop_tree
+    _build_displace_vop(node_vop_tree(vopn))
     _spare(vopn, amp=0.5)
     trees.append(t)
 
