@@ -498,6 +498,23 @@ def ensure_target(tree):
     return obj
 
 
+def cook_node_at(node, frame):
+    """Cook one node at a frame (outside the display / viewport update) and return its geometry."""
+    tree = node.id_data
+    while tree is not None and tree.owner_tree is not None:
+        tree = tree.owner_tree
+    scene = bpy.context.scene
+    fps = scene.render.fps / scene.render.fps_base if scene else 24.0
+    from .animation import apply_all
+    apply_all(float(frame), fps)
+    ctx_base = {
+        'frame': float(frame), 'time': float(frame - 1) / fps, 'fps': fps,
+        'animated': _tree_has_animation(tree), 'objmerge_epoch': _objmerge_epoch,
+    }
+    geo, _sig = cook_node(node, ctx_base)
+    return geo
+
+
 def cook_tree(tree, frame=None):
     """Cook the display node and write it into the output object."""
     global _cooking

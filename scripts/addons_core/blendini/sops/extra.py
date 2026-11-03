@@ -855,3 +855,58 @@ class OcclusionSOP(SOP):
             base = np.ones((n, 3)) if cd is None or cd.dtype == object else cd
             geo.attribs[POINT]['Cd'] = base * (1.0 - occ)[:, None]
         return geo
+
+
+def cache_path(pattern, ctx):
+    """Absolute cache file path for the current frame ('//' is relative to the .blend file)."""
+    import os
+    from ..core.geoio import expand_path
+    node = (ctx.node_path or 'filecache').split('/')[-1]
+    blend_dir = ''
+    try:
+        import bpy
+        blend_dir = os.path.dirname(bpy.data.filepath) if bpy.data.filepath else bpy.app.tempdir.rstrip('/\\')
+        pattern = pattern.replace('//', '$HIP/', 1) if pattern.startswith('//') else pattern
+    except ImportError:
+        pass
+    return os.path.abspath(expand_path(pattern, ctx.frame, node, blend_dir))
+
+
+@register_sop
+class FileCacheSOP(SOP):
+    id = 'filecache'
+    label = "File Cache"
+    category = 'Utility'
+    inputs = 1
+    icon = 'FILE_CACHE'
+    time_dependent = True
+    description = ("Write geometry (with volumes and packed instances) to disk per frame with 'Save to Disk', "
+                   "then read it back with 'Load from Disk' (fast playback of simulations)")
+    parms = (
+        Parm('file', "Geometry File", 'string', default='//cache/$OS.$F4.npz',
+             description="$F / $F4 frame, $OS node name, '//' or $HIP: folder of the .blend file"),
+        Parm('load', "Load from Disk", 'bool', default=False),
+        Parm('startframe', "Start Frame", 'int', default=1),
+        Parm('endframe', "End Frame", 'int', default=48),
+        Parm('missing', "Missing Frame", 'enum', items=[('input', "Cook the Input", ""), ('empty', "No Geometry", ""),
+                                                        ('error', "Report Error", "")],
+             hide_when={'load': False}),
+    )
+
+    def cook(self, inputs, p, ctx):
+        import os
+        from ..core.geoio import load_geometry
+        if not p.load:
+            return _in(inputs).copy()
+        path = cache_path(p.file, ctx)
+        if os.path.isfile(path):
+            try:
+                return load_geometry(path)
+            except (OSError, ValueError, KeyError) as ex:
+                raise CookError("Can't read %s: %s" % (path, ex))
+        if p.missing == 'error':
+            raise CookError("No cache file %s" % path)
+        if p.missing == 'empty':
+            return Geometry()
+        ctx.warn("No cache file for this frame: %s" % path)
+        return _in(inputs).copy()

@@ -8,7 +8,7 @@ import bpy
 from bpy.app.handlers import persistent
 from bpy.props import StringProperty, BoolProperty
 
-from ..sops import REGISTRY, CATEGORIES
+from ..sops import REGISTRY, CATEGORIES, CookError
 from ..core.geometry import POINT, PRIM, VERTEX, DETAIL
 from ..vex.values import type_of_array
 from .tree import TREE_ID, NODE_PREFIX, BlendiniNodeBase, update_colors
@@ -122,6 +122,8 @@ def draw_parms(node, context, layout, compact=False):
         col2.operator("blendini.edit_begin", icon='EDITMODE_HLT')
         col2.operator("blendini.edit_commit", icon='CHECKMARK')
         col2.operator("blendini.edit_clear", icon='X')
+    if sop.id == 'filecache':
+        layout.operator("blendini.filecache_save", icon='FILE_CACHE')
     if sop.id == 'attribvop':
         row = layout.row(align=True)
         row.operator("blendini.dive_in", text="Dive In (I)", icon='TRIA_DOWN_BAR')
@@ -871,6 +873,47 @@ class BLENDINI_OT_export_obj(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class BLENDINI_OT_filecache_save(bpy.types.Operator):
+    """Cook the File Cache node's input over its frame range and write one file per frame"""
+    bl_idname = "blendini.filecache_save"
+    bl_label = "Save to Disk"
+
+    @classmethod
+    def poll(cls, context):
+        tree, node = _active_node(context)
+        return node is not None and getattr(node, 'sop_id', '') == 'filecache'
+
+    def execute(self, context):
+        import os
+        from ..core.geoio import save_geometry
+        from ..sops.extra import cache_path
+        from ..sops import CookContext
+        tree, node = _active_node(context)
+        scene = context.scene
+        keep_frame = scene.frame_current
+        was_loading = node.p_load
+        node.p_load = False
+        written = 0
+        try:
+            for f in range(int(node.p_startframe), int(node.p_endframe) + 1):
+                scene.frame_set(f)
+                geo = cook.cook_node_at(node, f)
+                path = cache_path(node.p_file, CookContext(frame=f, node_path=node.name))
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                save_geometry(geo, path)
+                written += 1
+        except (OSError, CookError) as ex:
+            self.report({'ERROR'}, "File Cache: %s" % ex)
+            node.p_load = was_loading
+            return {'CANCELLED'}
+        finally:
+            scene.frame_set(keep_frame)
+        node.p_load = True
+        cook.request_cook(tree)
+        self.report({'INFO'}, "Wrote %d frames" % written)
+        return {'FINISHED'}
+
+
 class BLENDINI_OT_bake(bpy.types.Operator):
     """Freeze the active node's geometry into regular Blender objects (independent of the network)"""
     bl_idname = "blendini.bake"
@@ -1440,6 +1483,7 @@ def _poll_texts():
 addon_keymaps = []
 
 classes = (
+    BLENDINI_OT_filecache_save,
     BLENDINI_OT_set_display,
     BLENDINI_OT_toggle_bypass,
     BLENDINI_OT_cook,

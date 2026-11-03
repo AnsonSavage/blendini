@@ -689,6 +689,28 @@ class TestEverydaySops(unittest.TestCase):
         self.assertEqual(len(heights), 2)
         self.assertGreater(heights[1], heights[0] + 0.05)
 
+    def test_geometry_files_and_file_cache(self):
+        import os
+        import tempfile
+        from blendini.core.geoio import save_geometry, load_geometry, expand_path
+        from blendini.sops import REGISTRY, default_parms, CookContext
+        w, _ = run_wrangle('s@name = "p" + itoa(@ptnum); v@v = {1, 2, 3};', [_grid()], run_over='point')
+        w.groups['point']['top'] = w.P[:, 2] > 0
+        vol = cook_sop('volumewrangle', [cook_sop('volume', voxelsize=0.25)], snippet='@density = @P.x;')
+        full = merge([w, vol, cook_sop('pack', [merge([cook_sop('box'), cook_sop('sphere', t=(3, 0, 0))])])])
+        path = os.path.join(tempfile.mkdtemp(), 'g.npz')
+        save_geometry(full, path)
+        back = load_geometry(path)
+        self.assertEqual((back.num_points, back.num_prims, len(back.instances)), (full.num_points, full.num_prims, 2))
+        self.assertEqual(list(back.attribs['point']['name'][:2]), ['p0', 'p1'])
+        np.testing.assert_allclose(back.volumes[0].data, full.volumes[0].data)
+        self.assertEqual(int(back.groups['point']['top'].sum()), int(full.groups['point']['top'].sum()))
+        self.assertEqual(expand_path('$HIP/c/$OS.$F4.npz', 12, 'fc', '/p'), '/p/c/fc.0012.npz')
+        p = default_parms('filecache')
+        p.update(file=os.path.join(os.path.dirname(path), 'g.npz'), load=True)
+        out = REGISTRY['filecache'].cook([cook_sop('box')], p, CookContext(frame=3))
+        self.assertEqual(out.num_points, full.num_points)
+
     def test_skin(self):
         rows = Geometry.from_polys([[x, y, 0] for y in range(3) for x in range(4)],
                                    [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], closed=False)

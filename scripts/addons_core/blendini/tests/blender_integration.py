@@ -127,6 +127,31 @@ def main():
         finally:
             bpy.data.node_groups.remove(tree)
 
+    def file_cache():
+        from blendini.bl.examples import _finish
+        tree = bpy.data.node_groups.new("filecache_test", "BlendiniSOPTree")
+        try:
+            box = tree.nodes.new(NODE_PREFIX + 'box')
+            w = tree.nodes.new(NODE_PREFIX + 'pointwrangle')
+            w.p_snippet = '@P.y += @Frame * 0.1;'
+            fc = tree.nodes.new(NODE_PREFIX + 'filecache')
+            fc.p_file = os.path.join(tempfile.mkdtemp(), '$OS.$F4.npz')
+            fc.p_endframe = 5
+            tree.links.new(box.outputs[0], w.inputs[0])
+            tree.links.new(w.outputs[0], fc.inputs[0])
+            _finish(tree, fc)
+            ctx = mock.MagicMock()
+            ctx.space_data.edit_tree = tree
+            ctx.space_data.tree_type = 'BlendiniSOPTree'
+            ctx.scene = bpy.context.scene
+            assert ui.BLENDINI_OT_filecache_save.execute(mock.MagicMock(), ctx) == {'FINISHED'}
+            assert fc.p_load
+            box.p_size = (5.0, 5.0, 5.0)    # ignored while loading from disk
+            geo = cook.cook_node_at(fc, 4)
+            assert abs(geo.P[:, 1].max() - (0.5 + 0.4)) < 1e-6, geo.P[:, 1].max()
+        finally:
+            bpy.data.node_groups.remove(tree)
+
     def unregister():
         blendini.unregister()
 
@@ -136,6 +161,7 @@ def main():
     check("operators with a node editor context", operators)
     check("rigid body scene lifecycle", rbd_scene_lifecycle)
     check("viewport handle bindings", handle_bindings)
+    check("file cache save / load", file_cache)
     check("unregister", unregister)
     print("\n%d failure(s)" % len(failures))
     return 1 if failures else 0
