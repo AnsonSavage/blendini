@@ -1845,14 +1845,21 @@ def _pcfilter(I, args, mask, hint):
         return zeros(hint if hint in SHAPES else 'float', I.n)
     t = type_of_array(arr)
     out = np.zeros((I.n,) + arr.shape[1:])
-    for i in np.nonzero(mask)[0]:
-        idx = res[i]
-        if len(idx) == 0:
-            continue
-        d = np.linalg.norm(geo.P[idx] - pos[i], axis=1)
-        r = max(float(radius[i]), 1e-12)
+    lanes = np.nonzero(mask)[0]
+    counts = np.array([len(res[i]) for i in lanes], dtype=np.int64)
+    if counts.sum():
+        # All lanes at once: flatten the (lane, point) pairs and accumulate weighted sums.
+        L = np.repeat(lanes, counts)
+        J = np.concatenate([res[i] for i in lanes if len(res[i])]).astype(np.int64)
+        d = np.linalg.norm(geo.P[J] - pos[L], axis=1)
+        r = np.maximum(np.asarray(radius, dtype=np.float64)[L], 1e-12)
         w = np.maximum(1.0 - (d / r) ** 2, 0.0) ** 3 + 1e-9
-        out[i] = np.tensordot(w / w.sum(), arr[idx].astype(np.float64), axes=1)
+        wsum = np.bincount(L, weights=w, minlength=I.n)
+        vals = arr[J].astype(np.float64).reshape(len(J), -1)
+        acc = np.stack([np.bincount(L, weights=w * vals[:, k], minlength=I.n) for k in range(vals.shape[1])], axis=1)
+        ok = wsum > 0
+        acc[ok] /= wsum[ok, None]
+        out = acc.reshape((I.n,) + arr.shape[1:])
     return V(t if t != 'int' else 'float', out)
 
 
