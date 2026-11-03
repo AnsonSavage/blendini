@@ -1059,3 +1059,138 @@ def _getattrib(I, args, mask, hint):
 
 
 OUTARGS.add('getattrib')
+
+
+# ----------------------------------------------------------------------------
+# Topology edits, ray queries, sampling
+
+
+@builtin('setvertexpoint', 'setprimvertex')
+def _setvertexpoint(I, args, mask, hint):
+    """setvertexpoint(geo, prim, vtx, pt): rewire a vertex to another point (prim -1: vtx is a linear vertex)."""
+    geo = I.ctx.input(0)
+    n = _n(I, *args[1:])
+    prim, vtx, pt = (_ints(I, a, n) for a in args[1:4])
+    for i in np.nonzero(mask)[0]:
+        pr, v = int(prim[i]), int(vtx[i])
+        if pr >= 0:
+            if pr >= geo.num_prims or v < 0 or v >= geo.prim_start[pr + 1] - geo.prim_start[pr]:
+                continue
+            v = int(geo.prim_start[pr]) + v
+        I.ctx.rewire.append((v, int(pt[i])))
+    return const('int', 0)
+
+
+@builtin('intersect_all')
+def _intersect_all(I, args, mask, hint):
+    """intersect_all(geo, orig, dir, &pos[], &prim[], &uvw[], tol=0.01, ttol=0.01): all hits along the ray."""
+    from ..core.spatial import ray_cast
+    from .interp import _make_array
+    geo = _geo(I, args[0])
+    n = I.n
+    orig = full(convert(args[1], 'vector'), n)
+    d = full(convert(args[2], 'vector'), n)
+    length = np.linalg.norm(d, axis=1)
+    dirs = d / np.maximum(length[:, None], 1e-12)
+    pos_out = np.empty(n, dtype=object)
+    prim_out = np.empty(n, dtype=object)
+    uvw_out = np.empty(n, dtype=object)
+    count = np.zeros(n, dtype=np.int64)
+    for i in range(n):
+        pos_out[i], prim_out[i], uvw_out[i] = np.zeros((0, 3)), np.zeros(0, np.int64), np.zeros((0, 3))
+    if geo.num_prims:
+        for i in np.nonzero(mask & (length > 0))[0]:
+            o, travelled, hits_p, hits_pr = orig[i].copy(), 0.0, [], []
+            for _ in range(64):
+                hit, loc, _nrm, pr, dist = ray_cast(geo, o[None], dirs[i][None], length[i] - travelled)
+                if not hit[0]:
+                    break
+                hits_p.append(loc[0])
+                hits_pr.append(int(pr[0]))
+                travelled += dist[0] + 1e-5
+                o = loc[0] + dirs[i] * 1e-5
+                if travelled >= length[i]:
+                    break
+            if hits_p:
+                pos_out[i] = np.array(hits_p)
+                prim_out[i] = np.array(hits_pr, dtype=np.int64)
+                uvw_out[i] = np.zeros((len(hits_p), 3))
+                count[i] = len(hits_p)
+    _ = _make_array
+    return V('int', count), {3: V('vector[]', pos_out), 4: V('int[]', prim_out), 5: V('vector[]', uvw_out)}
+
+
+OUTARGS.add('intersect_all')
+
+
+@builtin('pcfind_radius')
+def _pcfind_radius(I, args, mask, hint):
+    """pcfind_radius(geo, Pchannel, radchannel, radscale, pos, radius, maxpts): points whose own radius
+    (pscale * radscale) plus the search radius reaches pos."""
+    geo = _geo(I, args[0])
+    n = I.n
+    radname = _uniform_str(args[2])
+    rs = full(convert(args[3], 'float'), n)
+    pos = full(convert(args[4], 'vector'), n)
+    radius = full(convert(args[5], 'float'), n)
+    maxpts = full(convert(args[6], 'int'), n) if len(args) > 6 else np.full(n, 1 << 30)
+    prad = geo.attribs['point'].get(radname)
+    prad = np.asarray(prad, dtype=np.float64) if prad is not None and prad.dtype != object else np.zeros(geo.num_points)
+    out = np.empty(n, dtype=object)
+    for i in range(n):
+        if not mask[i] or geo.num_points == 0:
+            out[i] = np.zeros(0, np.int64)
+            continue
+        dist = np.linalg.norm(geo.P - pos[i], axis=1)
+        ok = np.nonzero(dist <= radius[i] + prad * rs[i])[0]
+        out[i] = ok[np.argsort(dist[ok])][:max(int(maxpts[i]), 0)]
+    return V('int[]', out)
+
+
+@builtin('isbound')
+def _isbound(I, args, mask, hint):
+    """isbound(name): 1 when the attribute exists on the geometry being processed."""
+    name = _uniform_str(args[0])
+    geo = I.ctx.input(0)
+    cls = getattr(I.ctx, 'run_over', 'point')
+    return const('int', 1 if name in geo.attribs.get(cls, {}) or (name == 'P' and cls == 'point') else 0)
+
+
+@builtin('uvsample')
+def _uvsample(I, args, mask, hint):
+    """uvsample(geo, attrib, uvname, uv): an attribute at a texture coordinate (barycentric on the uv triangles)."""
+    from .values import type_of_array as _toa
+    geo = _geo(I, args[0])
+    name = _uniform_str(args[1])
+    uvname = _uniform_str(args[2])
+    uv = full(convert(args[3], 'vector'), I.n)[:, :2]
+    tris, tri_prim = geo.triangulate_flat()
+    uvv = geo.attribs['vertex'].get(uvname)
+    uvp = geo.attribs['point'].get(uvname)
+    src = geo.P if name == 'P' else geo.attribs['point'].get(name)
+    if src is None or not len(tris) or (uvv is None and uvp is None):
+        return const('vector' if hint == 'vector' else 'float', 0.0) if hint != 'vector' else V('vector', np.zeros((1, 3)))
+    # Point uv per triangle corner (vertex uvs looked up through the first vertex using each point).
+    if uvp is not None:
+        tuv = uvp[tris][:, :, :2]
+    else:
+        first = np.full(geo.num_points, 0, dtype=np.int64)
+        first[geo.vtx_point[::-1]] = np.arange(geo.num_vertices)[::-1]
+        tuv = uvv[first[tris]][:, :, :2]
+    vals = np.asarray(src, dtype=np.float64)[tris]
+    t = _toa(src)
+    out = np.zeros((I.n,) + vals.shape[2:])
+    a, b, c = tuv[:, 0], tuv[:, 1], tuv[:, 2]
+    v0, v1 = b - a, c - a
+    den = v0[:, 0] * v1[:, 1] - v1[:, 0] * v0[:, 1]
+    for i in np.nonzero(mask)[0]:
+        v2 = uv[i] - a
+        with np.errstate(divide='ignore', invalid='ignore'):
+            bb = (v2[:, 0] * v1[:, 1] - v1[:, 0] * v2[:, 1]) / den
+            cc = (v0[:, 0] * v2[:, 1] - v2[:, 0] * v0[:, 1]) / den
+        inside = np.nonzero((bb >= -1e-6) & (cc >= -1e-6) & (bb + cc <= 1 + 1e-6))[0]
+        if len(inside):
+            k = inside[0]
+            w = np.array([1 - bb[k] - cc[k], bb[k], cc[k]])
+            out[i] = np.tensordot(w, vals[k], axes=1)
+    return V(t, out)

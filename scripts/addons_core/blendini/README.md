@@ -217,7 +217,8 @@ Builtins (partial list):
   vertexpoint vertexprim idtopoint findattribval primarea primintrinsic attrib
   npointsgroup nprimitivesgroup primvertices pointvertices vertexindex vertexprimindex
   nuniqueval uniqueval uniquevals findattribvalcount nametopoint nametoprim attribtype attribsize
-  intersect primarclen pcopen pcfilter pciterate pcimport`.
+  intersect intersect_all uvsample primarclen pcopen pcfilter pciterate pcimport pcfind_radius isbound
+  setvertexpoint setprimvertex getattrib keys`.
 - Volumes: `volumesample volumesamplev volumegradient volumeres volumeindex volumepostoindex
   volumeindextopos volumevoxeldiameter`.
 - Half-edges: `primhedge pointhedge pointedge hedge_srcpoint hedge_dstpoint hedge_next hedge_prev

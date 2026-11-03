@@ -42,6 +42,7 @@ class WrangleContext:
         self.num_new_points = 0
         self.new_prims = []       # list of (pts list, closed)
         self.new_vertices = []    # (prim, pt)
+        self.rewire = []          # (linear vertex, new point): setvertexpoint / setprimvertex
         self.removed = {POINT: [], PRIM: []}
         self.remove_prim_points = False
         self.sets = []            # (cls, name, idx, type, values, mode)
@@ -264,6 +265,17 @@ class WrangleContext:
                 if 0 <= prim < len(polys):
                     polys[prim].append(pt)
             _rebuild(geo, polys)
+        if self.rewire:
+            vp = geo.vtx_point.copy()
+            bad = 0
+            for v, pt in self.rewire:
+                if 0 <= v < len(vp) and 0 <= pt < geo.num_points:
+                    vp[v] = pt
+                else:
+                    bad += 1
+            if bad:
+                self.log("Warning: %d setvertexpoint() calls referred to invalid vertices or points" % bad)
+            geo.vtx_point = vp
         # 3. addattrib / setattrib / setgroup calls.
         for acls, name, default in self.new_attribs:
             if name not in geo.attribs[acls]:

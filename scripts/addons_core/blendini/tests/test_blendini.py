@@ -269,6 +269,18 @@ class TestVex(unittest.TestCase):
         self.assertEqual(out.attribs['point']['n'].shape, (g.num_points, 3))
         self.assertEqual(out.attribs['point']['s'].shape, (g.num_points,))
 
+    def test_vertex_rewire_intersect_all_uvsample(self):
+        g = cook_sop('grid', rows=3, cols=3)
+        out, _ = run_wrangle('setvertexpoint(0, 0, 0, 8);', [g], run_over='detail')
+        self.assertEqual(int(out.prim_points(0)[0]), 8)
+        o, _ = run_wrangle('vector p[]; int pr[]; vector uvw[]; i@n = intersect_all(1, {0,5,0}, {0,-10,0}, p, pr, uvw);'
+                           'f@y0 = p[0].y; f@y1 = p[1].y;', [g, cook_sop('box')], run_over='detail')
+        d = o.attribs['detail']
+        self.assertEqual((int(d['n'][0]), float(d['y0'][0]), float(d['y1'][0])), (2, 0.5, -0.5))
+        u = cook_sop('uvtexture', [cook_sop('grid', rows=5, cols=5)])
+        o, _ = run_wrangle('v@p = uvsample(1, "P", "uv", {0.5, 0.5, 0});', [g, u], run_over='detail')
+        np.testing.assert_allclose(o.attribs['detail']['p'][0], [0, 0, 0], atol=1e-9)
+
     def test_strings(self):
         out, msgs = _wrangle('s@name = sprintf("piece%d", @ptnum); printf("%s\\n", s@name);')
         self.assertEqual(out.attribs['point']['name'][3], 'piece3')
