@@ -1081,3 +1081,66 @@ class VDBCombineSOP(SOP):
         ng.links.new(last, to_mesh.inputs['Grid'])
         ng.links.new(to_mesh.outputs[0], gout.inputs[0])
         return _run_group(a, ng, extra=[b])
+
+
+@register_sop
+class PolyFillSOP(SOP):
+    id = 'polyfill'
+    label = "PolyFill"
+    category = 'Polygon'
+    inputs = 1
+    icon = 'MOD_TRIANGULATE'
+    description = "Fill holes (open boundary loops) with polygons"
+    parms = (
+        Parm('maxsides', "Max Hole Sides (0 = any)", 'int', default=0, min=0),
+        Parm('triangulate', "Triangulate Fill", 'bool', default=False),
+        Parm('fillgroup', "Fill Group", 'string', default='fill'),
+    )
+
+    def cook(self, inputs, p, ctx):
+        from ..core.geometry import PRIM
+        geo = _in(inputs)
+        if geo.num_prims == 0:
+            return geo
+        n_before = geo.num_prims
+
+        def fn(bm):
+            res = bmesh.ops.holes_fill(bm, edges=bm.edges[:], sides=p.maxsides)
+            new_faces = [f for f in res.get('faces', []) if f.is_valid]
+            if p.triangulate and new_faces:
+                bmesh.ops.triangulate(bm, faces=new_faces)
+            # New faces are appended after the original ones: flag them for the fill group.
+            bm.faces.index_update()
+            layer = bm.faces.layers.int.new('__fill')
+            for f in bm.faces:
+                f[layer] = 1 if f.index >= n_before else 0
+        out = _with_bmesh(geo, fn)
+        flag = out.attribs[PRIM].pop('__fill', None)
+        if p.fillgroup and flag is not None:
+            out.groups[PRIM][p.fillgroup] = flag.astype(bool)
+        return out
+
+
+@register_sop
+class DissolveSOP(SOP):
+    id = 'dissolve'
+    label = "Dissolve (Limited)"
+    category = 'Polygon'
+    inputs = 1
+    icon = 'MOD_DECIM'
+    description = "Merge coplanar faces and remove inline points (Blender limited dissolve)"
+    parms = (
+        Parm('angle', "Max Angle (degrees)", 'float', default=5.0, min=0, max=180),
+        Parm('boundaries', "Delimit by Boundaries", 'bool', default=False),
+    )
+
+    def cook(self, inputs, p, ctx):
+        import math
+        geo = _in(inputs)
+        if geo.num_prims == 0:
+            return geo
+
+        def fn(bm):
+            bmesh.ops.dissolve_limit(bm, angle_limit=math.radians(p.angle), use_dissolve_boundaries=p.boundaries,
+                                     verts=bm.verts[:], edges=bm.edges[:])
+        return _with_bmesh(geo, fn)
