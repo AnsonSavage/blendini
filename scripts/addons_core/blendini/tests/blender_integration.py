@@ -281,6 +281,22 @@ def main():
         assert eval_driver_expression('$F / $FPS', 12.0, 24.0) == 0.5
         assert abs(eval_driver_expression('sin($PI / 2) + $T', 25.0, 24.0) - 2.0) < 1e-9
 
+    def undo_redo_with_simulations():
+        import random
+        rng = random.Random(1)
+        names = [n for n in ('rbd_fracture', 'rbd_chain', 'pyro_fire', 'volume_cloud', 'fluid_dambreak')
+                 if bpy.data.node_groups.get(n) is not None]
+        for i in range(6):
+            bpy.ops.ed.undo_push(message="blendini test %d" % i)
+            bpy.context.scene.frame_set(rng.randint(1, 20))
+            cook.cook_tree(bpy.data.node_groups[rng.choice(names)])
+            if i % 2:
+                bpy.ops.ed.undo()
+            for t in cook.all_trees():
+                cook.cook_tree(t)
+        errors = [(t.name, n.name) for t in cook.all_trees() for n in t.nodes if cook.node_info(n).get('error')]
+        assert not errors, errors
+
     def unregister():
         blendini.unregister()
 
@@ -296,6 +312,7 @@ def main():
     check("attribute paint commit", attribute_paint)
     check("instance Blender objects by name", instance_objects)
     check("Houdini expression variables", houdini_expression_variables)
+    check("undo / redo with simulations", undo_redo_with_simulations)
     check("unregister", unregister)
     print("\n%d failure(s)" % len(failures))
     return 1 if failures else 0
