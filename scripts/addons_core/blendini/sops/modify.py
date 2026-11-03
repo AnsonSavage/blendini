@@ -912,16 +912,25 @@ class MeasureSOP(SOP):
     parms = (
         Parm('measure', "Measure", 'enum', items=[
             ('area', "Area", ""), ('perimeter', "Perimeter", ""), ('centroid', "Centroid", ""),
+            ('volume', "Volume (per connected piece)", "Enclosed volume of each closed piece, on its primitives"),
+            ('curvature', "Curvature (points)", "Mean curvature estimate, positive on convex areas"),
         ]),
         Parm('attribname', "Attribute", 'string', default='area'),
+        Parm('total', "Also Store Total in Detail", 'bool', default=False,
+             description="Sum (area, perimeter, volume) or average (curvature) as a detail attribute"),
     )
 
     def cook(self, inputs, p, ctx):
         geo = _in(inputs).copy()
+        name = p.attribname.strip() or p.measure
         if p.measure == 'area':
-            geo.attribs[PRIM][p.attribname] = geo.prim_areas()
+            geo.attribs[PRIM][name] = geo.prim_areas()
         elif p.measure == 'centroid':
-            geo.attribs[PRIM][p.attribname] = geo.prim_centers()
+            geo.attribs[PRIM][name] = geo.prim_centers()
+        elif p.measure == 'volume':
+            geo.attribs[PRIM][name] = _piece_volumes(geo)
+        elif p.measure == 'curvature':
+            geo.attribs[POINT][name] = _point_curvature(geo)
         else:
             idx = np.arange(geo.num_vertices)
             nxt = idx + 1
@@ -932,8 +941,62 @@ class MeasureSOP(SOP):
             seg[last[nz & ~geo.prim_closed]] = 0
             per = np.zeros(geo.num_prims)
             np.add.at(per, geo.vertex_prim(), seg)
-            geo.attribs[PRIM][p.attribname] = per
+            geo.attribs[PRIM][name] = per
+        if p.get('total') and p.measure != 'centroid':
+            if p.measure == 'volume':
+                vals = geo.attribs[PRIM][name]
+                total = float(_piece_volumes(geo, per_piece_total=True))
+            elif p.measure == 'curvature':
+                vals = geo.attribs[POINT][name]
+                total = float(vals.mean()) if len(vals) else 0.0
+            else:
+                total = float(geo.attribs[PRIM][name].sum())
+            geo.attribs[DETAIL][name] = np.array([total])
         return geo
+
+
+def _piece_volumes(geo, per_piece_total=False):
+    """Signed enclosed volume of each connected piece (divergence theorem), stored per primitive."""
+    n = geo.num_prims
+    if n == 0:
+        return 0.0 if per_piece_total else np.zeros(0)
+    tris, tri_prim = geo.triangulate_flat()
+    if not len(tris):
+        return 0.0 if per_piece_total else np.zeros(n)
+    A, B, C = geo.P[tris[:, 0]], geo.P[tris[:, 1]], geo.P[tris[:, 2]]
+    tv = np.einsum('ij,ij->i', A, np.cross(B, C)) / 6.0
+    conn = REGISTRY_COOK('connectivity', geo, attribname='__piece').attribs[PRIM]['__piece']
+    k = int(conn.max()) + 1 if len(conn) else 1
+    vol = np.abs(np.bincount(conn[tri_prim], weights=tv, minlength=k))
+    if per_piece_total:
+        return float(vol.sum())
+    return vol[conn]
+
+
+def _point_curvature(geo):
+    """Mean curvature per point: umbrella Laplacian length over mean edge length, signed by the normal."""
+    n = geo.num_points
+    if n == 0 or geo.num_prims == 0:
+        return np.zeros(n)
+    E = geo.edges()
+    if not len(E):
+        return np.zeros(n)
+    P = geo.P
+    acc = np.zeros((n, 3))
+    cnt = np.bincount(E.ravel(), minlength=n).astype(np.float64)
+    for k in range(3):
+        acc[:, k] += np.bincount(E[:, 0], weights=P[E[:, 1], k], minlength=n)
+        acc[:, k] += np.bincount(E[:, 1], weights=P[E[:, 0], k], minlength=n)
+    lap = acc / np.maximum(cnt, 1)[:, None] - P
+    elen = np.linalg.norm(P[E[:, 0]] - P[E[:, 1]], axis=1)
+    mean_len = np.bincount(E.ravel(), weights=np.repeat(elen, 2), minlength=n) / np.maximum(cnt, 1)
+    N = geo.point_normals()
+    sign = -np.sign(np.einsum('ij,ij->i', lap, N))
+    # Scaled so a sphere of radius r measures 1 / r (umbrella operator on a regular triangle mesh).
+    curv = 1.414 * np.linalg.norm(lap, axis=1) / np.maximum(mean_len, 1e-12) ** 2
+    out = sign * curv
+    out[cnt == 0] = 0.0
+    return out
 
 
 # ----------------------------------------------------------------------------

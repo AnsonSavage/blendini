@@ -975,6 +975,16 @@ class TestEverydaySops(unittest.TestCase):
         np.testing.assert_allclose(prom('rms')['w'][0], np.sqrt(6.5))
         self.assertEqual(list(prom('first', names='name', newname='nm')['nm']), ['p0', 'p1', 'p3', 'p4'])
 
+    def test_measure_volume_and_curvature(self):
+        b = merge([cook_sop('box'), cook_sop('box', size=(2.0, 2.0, 2.0), t=(5, 0, 0))])
+        v = cook_sop('measure', [b], measure='volume', attribname='vol', total=True)
+        np.testing.assert_allclose(sorted(np.unique(np.round(v.attribs['prim']['vol'], 6))), [1, 8])
+        self.assertAlmostEqual(float(v.attribs['detail']['vol'][0]), 9.0)
+        for r in (1.0, 2.0):
+            s = cook_sop('sphere', type='polymesh', freq=4, rad=(r, r, r))
+            c = cook_sop('measure', [s], measure='curvature', attribname='curv')
+            self.assertAlmostEqual(float(c.attribs['point']['curv'].mean()), 1.0 / r, delta=0.05)
+
     def test_skin(self):
         rows = Geometry.from_polys([[x, y, 0] for y in range(3) for x in range(4)],
                                    [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], closed=False)
