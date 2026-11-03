@@ -563,3 +563,295 @@ class ConnectAdjacentPiecesSOP(SOP):
         out.attribs['prim']['damping'] = np.full(m, float(p.damping))
         out.attribs['prim']['axis'] = np.tile(np.asarray(p.axis, dtype=np.float64), (m, 1))
         return out
+
+
+@register_sop
+class UVTransformSOP(SOP):
+    id = 'uvtransform'
+    label = "UV Transform"
+    category = 'Attribute'
+    inputs = 1
+    icon = 'UV_DATA'
+    description = "Translate, rotate and scale texture coordinates"
+    parms = (
+        Parm('group', "Group (primitives)", 'string'),
+        Parm('attrib', "Attribute", 'string', default='uv'),
+        Parm('t', "Translate", 'vector'),
+        Parm('r', "Rotate (around W)", 'float', default=0.0),
+        Parm('s', "Scale", 'vector', default=(1.0, 1.0, 1.0)),
+        Parm('p', "Pivot", 'vector'),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs).copy()
+        name = p.attrib.strip() or 'uv'
+        cls = 'vertex' if name in geo.attribs['vertex'] else 'point' if name in geo.attribs['point'] else None
+        if cls is None:
+            ctx.warn("UV Transform: no '%s' attribute" % name)
+            return geo
+        uv = np.array(geo.attribs[cls][name], dtype=np.float64, copy=True)
+        if uv.ndim == 1:
+            return geo
+        prim_mask = parse_group_pattern(geo, 'prim', p.group)
+        if cls == 'vertex':
+            sel = np.repeat(prim_mask, geo.prim_sizes())
+        else:
+            sel = np.zeros(geo.num_points, dtype=bool)
+            sel[geo.vtx_point[np.repeat(prim_mask, geo.prim_sizes())]] = True
+            if geo.num_prims == 0:
+                sel[:] = True
+        k = uv.shape[1]
+        piv = np.asarray(p.p, dtype=np.float64)[:k]
+        d = uv[sel] - piv
+        d = d * np.asarray(p.s, dtype=np.float64)[:k]
+        a = np.radians(p.r)
+        c, s_ = np.cos(a), np.sin(a)
+        x, y = d[:, 0].copy(), d[:, 1].copy()
+        d[:, 0], d[:, 1] = x * c - y * s_, x * s_ + y * c
+        uv[sel] = d + piv + np.asarray(p.t, dtype=np.float64)[:k]
+        geo.attribs[cls][name] = uv
+        return geo
+
+
+def _adjust_values(geo, cls, n, size, p, ctx):
+    """Values for Attribute Adjust: constant, random or noise (n x size)."""
+    from ..core import noise as _noise
+    if p.pattern == 'constant':
+        v = np.asarray(p.value if size > 1 else [p.fvalue], dtype=np.float64)[:size]
+        return np.broadcast_to(v, (n, size)).copy()
+    if p.pattern == 'random':
+        idx = np.arange(n, dtype=np.float64)
+        r = _noise.rand(np.stack([idx, np.full(n, float(p.seed))], axis=1), size)
+        r = r.reshape(n, size)
+        lo = np.asarray(p.minv if size > 1 else [p.fmin], dtype=np.float64)[:size]
+        hi = np.asarray(p.maxv if size > 1 else [p.fmax], dtype=np.float64)[:size]
+        return lo + r * (hi - lo)
+    # noise
+    if cls == 'point':
+        P = geo.P
+    elif cls == 'prim':
+        P = geo.prim_centers()
+    elif cls == 'vertex':
+        P = geo.P[geo.vtx_point]
+    else:
+        P = np.zeros((1, 3))
+    pos = P / max(p.elementsize, 1e-9) + np.asarray(p.offset, dtype=np.float64)
+    nz = _noise.snoise(pos, size).reshape(n, size)
+    return nz * p.amplitude + p.center
+
+
+class _AttribAdjustBase(SOP):
+    category = 'Attribute'
+    inputs = 1
+    size = 1
+    common = (
+        Parm('class', "Class", 'enum', items=[('point', "Point", ""), ('prim', "Primitive", ""),
+                                             ('vertex', "Vertex", ""), ('detail', "Detail", "")]),
+        Parm('group', "Group", 'string'),
+        Parm('op', "Operation", 'enum', items=[('set', "Set", ""), ('add', "Add", ""), ('sub', "Subtract", ""),
+                                               ('mult', "Multiply", ""), ('min', "Minimum", ""),
+                                               ('max', "Maximum", "")]),
+        Parm('pattern', "Pattern", 'enum', items=[('constant', "Constant", ""), ('random', "Random", ""),
+                                                  ('noise', "Noise", "")]),
+        Parm('seed', "Seed", 'int', default=0, hide_when={'pattern': ('constant', 'noise')}),
+        Parm('elementsize', "Element Size", 'float', default=1.0, min=1e-4, hide_when={'pattern': ('constant', 'random')}),
+        Parm('offset', "Noise Offset", 'vector', hide_when={'pattern': ('constant', 'random')}),
+        Parm('amplitude', "Amplitude", 'float', default=1.0, hide_when={'pattern': ('constant', 'random')}),
+        Parm('center', "Center Value", 'float', default=0.0, hide_when={'pattern': ('constant', 'random')}),
+        Parm('maskattrib', "Mask Attribute", 'string', default='',
+             description="Optional float attribute (0-1) blending the adjustment"),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs).copy()
+        cls = p['class']
+        name = p.attrib.strip()
+        if not name:
+            return geo
+        n = geo.count(cls)
+        size = self.size
+        old = geo.attribs[cls].get(name) if name != 'P' else geo.P
+        if old is None or old.dtype == object:
+            from ..core.geometry import ATTRIB_DEFAULTS
+            dflt = ATTRIB_DEFAULTS.get(name, 0.0)
+            old = np.full((n, size), dflt if np.ndim(dflt) == 0 else 0.0, dtype=np.float64)
+            if size == 1:
+                old = old[:, 0]
+        cur = np.array(old, dtype=np.float64, copy=True).reshape(n, -1)
+        if cur.shape[1] != size:
+            raise CookError("%s: '%s' has %d components, expected %d" % (self.label, name, cur.shape[1], size))
+        vals = _adjust_values(geo, cls, n, size, p, ctx)
+        new = {'set': lambda a, b: b, 'add': np.add, 'sub': np.subtract, 'mult': np.multiply,
+               'min': np.minimum, 'max': np.maximum}[p.op](cur, vals)
+        mask = parse_group_pattern(geo, cls, p.group) if cls != 'detail' else np.ones(1, dtype=bool)
+        w = mask.astype(np.float64)
+        if p.maskattrib.strip():
+            m = geo.attribs[cls].get(p.maskattrib.strip())
+            if m is not None and m.dtype != object:
+                w = w * np.clip(np.asarray(m, dtype=np.float64).reshape(n, -1)[:, 0], 0, 1)
+        out = cur + (new - cur) * w[:, None]
+        if size == 1:
+            out = out[:, 0]
+        if name == 'P':
+            geo.P = out
+        else:
+            geo.attribs[cls][name] = out
+        return geo
+
+
+@register_sop
+class AttribAdjustFloatSOP(_AttribAdjustBase):
+    id = 'attribadjustfloat'
+    label = "Attribute Adjust Float"
+    icon = 'MOD_HUE_SATURATION'
+    description = "Set / add / multiply a float attribute by a constant, random or noise pattern"
+    size = 1
+    parms = (Parm('attrib', "Attribute", 'string', default='pscale'),) + _AttribAdjustBase.common[:4] + (
+        Parm('fvalue', "Value", 'float', default=1.0, hide_when={'pattern': ('random', 'noise')}),
+        Parm('fmin', "Min Value", 'float', default=0.0, hide_when={'pattern': ('constant', 'noise')}),
+        Parm('fmax', "Max Value", 'float', default=1.0, hide_when={'pattern': ('constant', 'noise')}),
+    ) + _AttribAdjustBase.common[4:]
+
+
+@register_sop
+class AttribAdjustVectorSOP(_AttribAdjustBase):
+    id = 'attribadjustvector'
+    label = "Attribute Adjust Vector"
+    icon = 'ORIENTATION_GLOBAL'
+    description = "Set / add / multiply a vector attribute by a constant, random or noise pattern"
+    size = 3
+    parms = (Parm('attrib', "Attribute", 'string', default='v'),) + _AttribAdjustBase.common[:4] + (
+        Parm('value', "Value", 'vector', default=(0.0, 1.0, 0.0), hide_when={'pattern': ('random', 'noise')}),
+        Parm('minv', "Min Value", 'vector', default=(-1.0, -1.0, -1.0), hide_when={'pattern': ('constant', 'noise')}),
+        Parm('maxv', "Max Value", 'vector', default=(1.0, 1.0, 1.0), hide_when={'pattern': ('constant', 'noise')}),
+    ) + _AttribAdjustBase.common[4:]
+
+
+@register_sop
+class ExtractCentroidSOP(SOP):
+    id = 'extractcentroid'
+    label = "Extract Centroid"
+    category = 'Utility'
+    inputs = 1
+    icon = 'PIVOT_MEDIAN'
+    description = "One point per piece at its centroid (or bounding box center), keeping the piece name"
+    parms = (
+        Parm('pieceattrib', "Piece Attribute", 'string', default='name'),
+        Parm('method', "Method", 'enum', items=[('centroid', "Centroid (average)", ""),
+                                                ('bbox', "Bounding Box Center", "")]),
+    )
+
+    def cook(self, inputs, p, ctx):
+        src = _in(inputs)
+        out = Geometry()
+        if src.num_points == 0:
+            return out
+        if src.num_prims == 0:
+            pieces = [src]
+        else:
+            pieces = split_pieces(src, p.pieceattrib.strip())
+        names = piece_names(pieces, p.pieceattrib.strip())
+        cents = []
+        for pc in pieces:
+            if p.method == 'bbox':
+                lo, hi = pc.bbox()
+                cents.append((lo + hi) / 2)
+            else:
+                cents.append(pc.P.mean(axis=0))
+        out.P = np.array(cents)
+        attrib = p.pieceattrib.strip() or 'name'
+        out.attribs[POINT][attrib] = np.array(names, dtype=object)
+        return out
+
+
+@register_sop
+class GroupFromAttribBoundarySOP(SOP):
+    id = 'groupfromattribboundary'
+    label = "Group from Attribute Boundary"
+    category = 'Group'
+    inputs = 1
+    icon = 'GROUP_VERTEX'
+    description = "Points on the borders between primitives with different attribute values"
+    parms = (
+        Parm('attrib', "Attribute", 'string', default='name'),
+        Parm('groupname', "Group Name", 'string', default='boundary'),
+        Parm('includeunshared', "Include Unshared Edges", 'bool', default=False,
+             description="Also include points on open (mesh border) edges"),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs).copy()
+        vals = geo.attribs['prim'].get(p.attrib.strip())
+        mask = np.zeros(geo.num_points, dtype=bool)
+        if vals is None:
+            ctx.warn("Group from Attribute Boundary: no primitive attribute '%s'" % p.attrib)
+        else:
+            keyvals = [tuple(v) if np.ndim(v) else v for v in vals.tolist()]
+            edges = {}
+            for prim in range(geo.num_prims):
+                pts = geo.prim_points(prim).tolist()
+                m = len(pts)
+                count = m if geo.prim_closed[prim] else m - 1
+                for k in range(count):
+                    a, b = pts[k], pts[(k + 1) % m]
+                    edges.setdefault((min(a, b), max(a, b)), []).append(prim)
+            for (a, b), prims in edges.items():
+                distinct = len({keyvals[q] for q in prims}) > 1
+                if distinct or (p.includeunshared and len(prims) == 1):
+                    mask[a] = mask[b] = True
+        geo.groups['point'][p.groupname.strip() or 'boundary'] = mask
+        return geo
+
+
+@register_sop
+class OcclusionSOP(SOP):
+    id = 'occlusion'
+    label = "Calculate Occlusion"
+    category = 'Attribute'
+    inputs = 2
+    input_labels = ("Geometry", "Occluders (optional)")
+    icon = 'SHADING_RENDERED'
+    description = "Ambient occlusion per point by casting rays around the normal (0 open, 1 fully occluded)"
+    parms = (
+        Parm('rays', "Rays", 'int', default=16, min=1, max=256),
+        Parm('maxdist', "Max Distance", 'float', default=1.0, min=1e-4, soft_max=10),
+        Parm('attrib', "Attribute", 'string', default='occlusion'),
+        Parm('tocolor', "Darken Cd", 'bool', default=True),
+        Parm('seed', "Seed", 'int', default=0),
+    )
+
+    def cook(self, inputs, p, ctx):
+        from ..core import spatial
+        geo = _in(inputs, 0).copy()
+        occ_geo = _in(inputs, 1)
+        target = geo if occ_geo.num_prims == 0 else occ_geo
+        n = geo.num_points
+        if n == 0 or target.num_prims == 0:
+            return geo
+        N = geo.attribs[POINT].get('N')
+        if N is None or N.dtype == object:
+            N = geo.point_normals()
+        N = N / np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
+        k = max(int(p.rays), 1)
+        rng = np.random.default_rng(p.seed)
+        # Cosine weighted hemisphere directions (shared pattern, rotated per point).
+        u = rng.random((k, 2))
+        r = np.sqrt(u[:, 0])
+        a = 2 * np.pi * u[:, 1]
+        local = np.stack([r * np.cos(a), r * np.sin(a), np.sqrt(np.maximum(0, 1 - u[:, 0]))], axis=1)
+        helper = np.where(np.abs(N[:, 0:1]) < 0.9, [[1.0, 0.0, 0.0]], [[0.0, 1.0, 0.0]])
+        X = np.cross(helper, N)
+        X /= np.maximum(np.linalg.norm(X, axis=1, keepdims=True), 1e-12)
+        Y = np.cross(N, X)
+        dirs = (local[None, :, 0:1] * X[:, None] + local[None, :, 1:2] * Y[:, None]
+                + local[None, :, 2:3] * N[:, None]).reshape(-1, 3)
+        eps = 1e-4 * max(float(np.linalg.norm(geo.bbox()[1] - geo.bbox()[0])), 1.0)
+        origins = np.repeat(geo.P + N * eps, k, axis=0)
+        hit, _loc, _nrm, _prim, _dist = spatial.ray_cast(target, origins, dirs, p.maxdist)
+        occ = hit.reshape(n, k).mean(axis=1)
+        geo.attribs[POINT][p.attrib.strip() or 'occlusion'] = occ
+        if p.tocolor:
+            cd = geo.attribs[POINT].get('Cd')
+            base = np.ones((n, 3)) if cd is None or cd.dtype == object else cd
+            geo.attribs[POINT]['Cd'] = base * (1.0 - occ)[:, None]
+        return geo

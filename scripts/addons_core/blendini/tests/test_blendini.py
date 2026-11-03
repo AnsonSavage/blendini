@@ -622,6 +622,28 @@ class TestEverydaySops(unittest.TestCase):
         chain = cook_sop('connectadjacentpieces', [boxes], mode='chain')
         self.assertEqual(chain.num_prims, 4)
 
+    def test_sop_batch_two(self):
+        from blendini.vex.wrangle import run_wrangle as rw
+        g = cook_sop('grid', rows=3, cols=3)
+        t = cook_sop('uvtransform', [cook_sop('uvtexture', [g])], t=(1, 0, 0), s=(2, 2, 1), r=90)
+        np.testing.assert_allclose(t.attribs['vertex']['uv'][1], [0, 0, 0], atol=1e-9)
+        a = cook_sop('attribadjustfloat', [g], pattern='random', fmin=2.0, fmax=3.0)
+        ps = a.attribs['point']['pscale']
+        self.assertTrue(np.all((ps >= 2) & (ps <= 3)) and ps.std() > 0)
+        m = cook_sop('attribadjustvector', [g], attrib='v', op='add', value=(0, 2, 0))
+        np.testing.assert_allclose(m.attribs['point']['v'][:, 1], 2.0)
+        boxes = merge([cook_sop('box', t=(i * 2, 0, 0)) for i in range(3)])
+        c = cook_sop('extractcentroid', [boxes])
+        np.testing.assert_allclose(c.P[:, 0], [0, 2, 4], atol=1e-9)
+        sided, _ = rw('i@side = @P.x > 0;', [g], run_over='prim')
+        b = cook_sop('groupfromattribboundary', [sided], attrib='side')
+        np.testing.assert_allclose(np.abs(g.P[b.groups['point']['boundary'], 0]), 0, atol=1e-9)
+        o = cook_sop('occlusion', [merge([cook_sop('grid', rows=6, cols=6, size=(4.0, 4.0)),
+                                          cook_sop('box', t=(0, 0.5, 0))])], tocolor=False)
+        occ = o.attribs['point']['occlusion'][:36].reshape(6, 6)
+        self.assertGreater(occ[2:4, 2:4].mean(), 0.5)
+        self.assertEqual(occ[0].sum() + occ[-1].sum(), 0)
+
     def test_skin(self):
         rows = Geometry.from_polys([[x, y, 0] for y in range(3) for x in range(4)],
                                    [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], closed=False)

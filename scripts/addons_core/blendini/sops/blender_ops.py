@@ -1045,7 +1045,10 @@ class UVUnwrapSOP(SOP):
                                            selected_editable_objects=[obj]):
                 bpy.ops.object.mode_set(mode='EDIT')
                 bpy.ops.mesh.select_all(action='SELECT')
-                if p.method == 'smart':
+                if p.method == 'pack':
+                    bpy.ops.uv.select_all(action='SELECT')
+                    bpy.ops.uv.pack_islands(rotate=bool(p.get('rotate', True)), margin=p.margin)
+                elif p.method == 'smart':
                     bpy.ops.uv.smart_project(angle_limit=math.radians(p.angle), island_margin=p.margin)
                 elif p.method == 'unwrap':
                     bpy.ops.uv.unwrap(method='ANGLE_BASED', margin=p.margin)
@@ -1066,7 +1069,7 @@ class UVUnwrapSOP(SOP):
             out.attribs[VERTEX]['uv'] = full
             return out
         except RuntimeError as ex:
-            raise CookError("UV unwrap failed: %s" % ex)
+            raise CookError("%s failed: %s" % (self.label, ex))
         finally:
             if obj.mode != 'OBJECT':
                 try:
@@ -1405,3 +1408,24 @@ class Triangulate2DSOP(SOP):
                 from . import default_parms
                 out = ReverseSOP().cook([out], default_parms('reverse'), ctx)
         return out
+
+
+@register_sop
+class UVLayoutSOP(UVUnwrapSOP):
+    id = 'uvlayout'
+    label = "UV Layout"
+    description = "Pack the existing UV islands into the 0-1 square (Blender's Pack Islands)"
+    parms = (
+        Parm('margin', "Padding", 'float', default=0.01, min=0, max=0.5),
+        Parm('rotate', "Rotate Islands", 'bool', default=True),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs)
+        if 'uv' not in geo.attribs['vertex'] and 'uv' not in geo.attribs['point']:
+            raise CookError("UV Layout needs a uv attribute (use UV Unwrap or UV Texture first)")
+        q = dict(p)
+        q['method'] = 'pack'
+        q['angle'] = 66.0
+        from . import ParmValues
+        return super().cook(inputs, ParmValues(q), ctx)
