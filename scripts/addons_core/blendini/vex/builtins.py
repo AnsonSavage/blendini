@@ -939,7 +939,12 @@ def _geo(I, v, write=False):
         idx = int(s.split(':')[-1]) if s.startswith('opinput:') else 0
     else:
         idx = _uniform_int(v)
-    return I.ctx.input(idx)
+    geo = I.ctx.input(idx)
+    if geo is None:
+        # Unconnected input: behaves like empty geometry (as in Houdini).
+        from ..core.geometry import Geometry
+        return Geometry()
+    return geo
 
 
 def _attr_read(I, geo, cls, name, idx, hint):

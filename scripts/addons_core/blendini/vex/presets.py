@@ -71,4 +71,45 @@ for (int i = 0; i < n; i++) {
     ("Print Info", '''// printf output appears in the Geometry Info panel
 if (@ptnum == 0) printf("%d points, bbox size %g\\n", @numpt, getbbox_size(0));
 '''),
+    ("Snap to Surface (input 2)", '''// Project points onto the second input's surface
+int prim; vector uv;
+float d = xyzdist(1, @P, prim, uv);
+if (d < ch("maxdist") || ch("maxdist") == 0)
+    @P = primuv(1, "P", prim, uv);
+'''),
+    ("Struct Particles (struct + methods)", '''// VEX structs with methods, run over Detail
+struct Particle {
+    vector pos; vector vel;
+    void step(float dt) { vel += {0, -9.8, 0} * dt; pos += vel * dt; }
+}
+Particle p = Particle({0, 0, 0}, {1, 6, 0});
+int prev = -1;
+for (int i = 0; i < 40; i++) {
+    int pt = addpoint(0, p.pos);
+    if (prev >= 0) addprim(0, "polyline", prev, pt);
+    prev = pt;
+    p->step(1.0 / 24);
+}
+'''),
+    ("Count by Name (dict)", '''// Run over Detail: count primitives per name with a dict
+dict counts;
+for (int i = 0; i < nprims(0); i++) {
+    string n = prim(0, "name", i);
+    int c = isvalidindex(counts, n) ? counts[n] : 0;
+    counts[n] = c + 1;
+}
+string names[] = keys(counts);
+foreach (string n; names) printf("%s: %d\\n", n, counts[n]);
+'''),
+    ("Edge Lengths (half-edges)", '''// Run over Points: average length of the half-edges leaving each point
+// (a half-edge id is the vertex it starts from)
+int verts[] = pointvertices(0, @ptnum);
+float total = 0;
+foreach (int h; verts) total += distance(@P, point(0, "P", hedge_dstpoint(0, h)));
+f@edgelen = len(verts) ? total / len(verts) : 0;
+'''),
+    ("Density from Distance (Volume Wrangle)", '''// For a Volume Wrangle: a soft sphere of fog
+float r = 0.8;
+@density = clamp((r - length(@P)) * 4, 0, 1) * (0.6 + 0.4 * noise(@P * 3));
+'''),
 ]
