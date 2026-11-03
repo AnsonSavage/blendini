@@ -360,7 +360,7 @@ def build_examples():
 
     t = _new_tree("pyro_smoke", (118, 0, 0))
     src = _node(t, 'sphere', (0, 400), rad=(0.3, 0.3, 0.3), t=(0.0, 0.35, 0.0))
-    pyro = _node(t, 'pyrosolver', (0, 200))
+    pyro = _node(t, 'pyrosolver', (0, 200), size=(3.0, 3.5, 3.0), t=(0.0, 1.75, 0.0), voxelsize=0.07)
     _chain(t, [src, pyro])
     _finish(t, pyro)
     trees.append(t)

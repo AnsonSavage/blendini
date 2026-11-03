@@ -18,7 +18,7 @@ and needs a real Blender session to confirm.
 ### VEX
 - [x] Lexer / parser / SIMD masked interpreter (if/else, loops, break/continue, return, user
       functions with pass by reference, recursion, `#define` macros, casts, swizzles, arrays)
-- [x] 280 builtins: math, vectors, matrices, quaternions, noise, geometry read/write, groups, half-edges,
+- [x] 290+ builtins: math, vectors, matrices, quaternions, noise, geometry read/write, groups, half-edges,
       nearpoints, pcopen/pcfilter/pciterate/pcimport, xyzdist/primuv/minpos/intersect, strings and
       regular expressions, arrays, unique values, spline, sampling, colormap, ch*/chramp
 - [x] Wrangles: point / prim / vertex / detail / numbers, spare parameters, ramps, presets menu

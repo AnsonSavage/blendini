@@ -9,6 +9,17 @@ heightfield, L-system, For-Each, Voronoi fracture, RBD (Bullet), Vellum-style cl
 meshed with OpenVDB, packed instances, a nearpoints "plexus" and a curve built in a Detail
 Wrangle.*
 
+![Blendini volumes, pyro and terrain](docs/showcase2.jpg)
+
+*Heightfield mask and scatter forest, a Volume Wrangle cloud, Pyro fire and smoke, and an
+L-system rendered as curves with a width attribute.*
+
+**Highlights:** 146 SOPs and a VEX interpreter with about 290 functions (structs, dicts,
+half-edges, point clouds, volumes). Also: Attribute and Volume VOPs, native volumes with
+smoke and fire rendering, a Pyro solver, Vellum cloth and hair, RBD with constraint networks,
+a PBF fluid, heightfields, For-Each, subnets, File Cache, and Houdini-style flags, TAB menu,
+spreadsheet and viewport handles.
+
 Blendini is an open-source take on Houdini's geometry context. It uses Blender as the
 host and backend. You build a network of SOP nodes in a node editor. The node with the
 **display flag** cooks into a Blender object. The **Point Wrangle** runs real (subset)
