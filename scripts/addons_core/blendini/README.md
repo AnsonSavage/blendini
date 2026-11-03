@@ -109,6 +109,7 @@ See [ROADMAP.md](ROADMAP.md) for what is done and what is planned.
 | File Cache, .bgeo | File Cache SOP with lossless .npz files |
 | Material SOP, shop_materialpath | Material SOP or a `s@shop_materialpath = "MyMaterial";` wrangle: Blender material slots per primitive |
 | Rendering curves with width | Displayed polylines also become a Blender Curves object (radius from `f@width`, colored by `Cd`), so they render like in Houdini |
+| Performance Monitor | *Show Cook Times* in the Network panel: each node's cook time next to it (red for the slowest) |
 | Network boxes, dots | Network Box (Blender frame) and Dot (reroute) in the TAB menu's Layout section |
 | SOP Solver, Vellum, RBD (Bullet), FLIP, Pyro | Solver (VEX), Vellum Cloth (PBD), RBD Bullet Solver, Fluid Solver (PBF) + Particle Fluid Surface, Pyro Solver (Smoke) |
 | VDB / volumes, Volume Wrangle | Native voxel volumes (Volume, Volume from Polygons, **Volume Wrangle** with `@density`, Convert Volume). Fog volumes render as smoke through a Blender Volume object (OpenVDB). OpenVDB through Geometry Nodes for Particle Fluid Surface and VDB Reshape |

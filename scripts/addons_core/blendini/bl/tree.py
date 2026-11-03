@@ -117,6 +117,9 @@ class BlendiniNodeTree(bpy.types.NodeTree):
                                 description="For subnetworks: the network containing the subnet node")
     show_parms_in_nodes: BoolProperty(name="Show Parameters on Nodes", default=False,
                                       description="Draw parameters inside the nodes as well as in the Parameters pane")
+    show_cook_times: BoolProperty(name="Show Cook Times", default=False,
+                                  description="Performance monitor: draw each node's last cook time next to it "
+                                              "(red for the slowest)")
 
     def update(self):
         from . import cook

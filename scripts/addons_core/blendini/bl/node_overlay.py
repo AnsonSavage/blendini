@@ -44,6 +44,14 @@ def draw():
     shader = gpu.shader.from_builtin('UNIFORM_COLOR')
     gpu.state.blend_set('ALPHA')
     font = 0
+    times = {}
+    if getattr(tree, 'show_cook_times', False):
+        for node in tree.nodes:
+            if isinstance(node, BlendiniNodeBase):
+                t = cook.node_info(node).get('time')
+                if t is not None:
+                    times[node.name] = t
+    slowest = max(times.values()) if times else 0.0
     for node in tree.nodes:
         if not isinstance(node, BlendiniNodeBase):
             continue
@@ -70,6 +78,14 @@ def draw():
         blf.color(font, 0.62, 0.62, 0.62, 1.0)
         blf.position(font, x0 + 2, y1 - size - 3, 0)
         blf.draw(font, node.sop.label)
+        if node.name in times:
+            t = times[node.name]
+            heat = t / slowest if slowest > 0 else 0.0
+            blf.color(font, 0.55 + 0.45 * heat, 0.85 - 0.6 * heat, 0.45 - 0.3 * heat, 1.0)
+            text = "%.1f ms" % (t * 1000) if t < 1 else "%.2f s" % t
+            bar = gap + bw + (bw + gap if node.display_flag else 0) + (bw + gap if node.template_flag else 0)
+            blf.position(font, x1 + bar + 4, (y0 + y1) / 2 - size / 2, 0)
+            blf.draw(font, text)
     gpu.state.blend_set('NONE')
 
 

@@ -1197,6 +1197,7 @@ class BLENDINI_PT_network(bpy.types.Panel):
         layout.prop(tree, "target")
         layout.prop(tree, "auto_cook")
         layout.prop(tree, "show_parms_in_nodes")
+        layout.prop(tree, "show_cook_times", icon='TIME')
         box = layout.box()
         box.label(text="Viewport Display", icon='OVERLAY')
         row = box.row(align=True)
