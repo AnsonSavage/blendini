@@ -123,7 +123,7 @@ See [ROADMAP.md](ROADMAP.md) for what is done and what is planned.
 
 | Category  | SOPs |
 |-----------|------|
-| Primitive | Box, Grid, Sphere (UV / icosahedron), Tube, Torus, Circle, Line, Platonic Solids, Bound, Font\*, L-System |
+| Primitive | Box, Grid, Sphere (UV / icosahedron), Tube, Torus, Circle, Line, Platonic Solids, Bound, Font\*, L-System, Curve (polygon / Catmull-Rom / Bézier from typed coordinates) |
 | Manipulate| Transform, Primitive, Mirror, Bend (bend / twist / taper), Point Deform, Match Size, **Edit** (move points in Blender's Edit Mode, stored as offsets), Mountain, Point Jitter, Peak, Smooth, Ray\* |
 | Simulation| **Solver (VEX)** (SOP Solver), **Vellum Cloth (PBD)** (stretch/bend constraints, pins, ground, colliders), **RBD Bullet Solver\*** (Blender's rigid bodies in a private scene, optional breakable glue between neighbouring pieces), **Fluid Solver (PBF)** (experimental particle fluid in a box) |
 | Polygon   | **Voronoi Fracture\***, Particle Fluid Surface\* (OpenVDB meshing), **VDB Reshape / Smooth SDF\*** (dilate, erode, smooth, fillet), VDB Combine\* (SDF boolean), Add, Clean, Ends, Fuse, Facet, Divide, Reverse, PolyExtrude, PolyWire, Sweep, Resample, Carve, Convert Line, PolyPath, Subdivide\*, PolyBevel\*, Boolean\*, Remesh\*, PolyReduce\*, Clip\* |

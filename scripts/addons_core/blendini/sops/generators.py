@@ -6,7 +6,7 @@
 
 import numpy as np
 
-from .base import SOP, Parm, register_sop
+from .base import SOP, Parm, register_sop, CookError
 from ..core.geometry import Geometry, merge
 
 ORIENT_ITEMS = [('ZX', "ZX Plane", ""), ('XY', "XY Plane", ""), ('YZ', "YZ Plane", "")]
@@ -516,4 +516,89 @@ class LSystemSOP(SOP):
         # Remove points not used by any branch.
         if polys:
             geo.delete_unused_points()
+        return geo
+
+
+def _parse_coords(text):
+    pts = []
+    for tok in text.replace(';', ' ').split():
+        vals = [float(v) for v in tok.split(',') if v.strip()]
+        if not vals:
+            continue
+        vals = (vals + [0.0, 0.0, 0.0])[:3]
+        pts.append(vals)
+    return np.array(pts, dtype=np.float64).reshape(-1, 3)
+
+
+def catmull_rom(P, divs, closed):
+    n = len(P)
+    if n < 3:
+        return P.copy()
+    if closed:
+        Q = np.concatenate([P[-1:], P, P[:2]])
+        segs = n
+    else:
+        Q = np.concatenate([2 * P[:1] - P[1:2], P, 2 * P[-1:] - P[-2:-1]])
+        segs = n - 1
+    t = np.linspace(0, 1, divs, endpoint=False)[:, None]
+    out = []
+    for i in range(segs):
+        p0, p1, p2, p3 = Q[i], Q[i + 1], Q[i + 2], Q[i + 3]
+        out.append(0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t ** 2
+                          + (-p0 + 3 * p1 - 3 * p2 + p3) * t ** 3))
+    out = np.concatenate(out)
+    if not closed:
+        out = np.concatenate([out, P[-1:]])
+    return out
+
+
+def bezier(P, divs):
+    """Piecewise cubic Bezier through control points (P0 P1 P2 P3, P3 P4 P5 P6, ...)."""
+    n = len(P)
+    if n < 4:
+        return P.copy()
+    t = np.linspace(0, 1, divs, endpoint=False)[:, None]
+    out = []
+    i = 0
+    while i + 3 < n:
+        p0, p1, p2, p3 = P[i], P[i + 1], P[i + 2], P[i + 3]
+        out.append((1 - t) ** 3 * p0 + 3 * (1 - t) ** 2 * t * p1 + 3 * (1 - t) * t ** 2 * p2 + t ** 3 * p3)
+        i += 3
+    out.append(P[i:i + 1])
+    return np.concatenate(out)
+
+
+@register_sop
+class CurveSOP(SOP):
+    id = 'curve'
+    label = "Curve"
+    category = 'Primitive'
+    icon = 'CURVE_DATA'
+    parms = (
+        Parm('coords', "Coordinates", 'string', default='0,0,0 1,0,0 1,1,0 2,1,0 2,2,1',
+             description="Space separated x,y,z points"),
+        Parm('type', "Primitive Type", 'enum', items=[
+            ('poly', "Polygon", "Straight segments"), ('catmull', "Catmull-Rom (smooth through points)", ""),
+            ('bezier', "Bezier (every 3rd point on the curve)", ""),
+        ]),
+        Parm('divs', "Divisions per Segment", 'int', default=12, min=1, soft_max=64, hide_when={'type': 'poly'}),
+        Parm('close', "Close Curve", 'bool', default=False),
+    )
+
+    def cook(self, inputs, p, ctx):
+        try:
+            P = _parse_coords(p.coords)
+        except ValueError:
+            raise CookError("Coordinates must look like '0,0,0 1,0,0 1,1,0'")
+        geo = Geometry()
+        if len(P) == 0:
+            return geo
+        closed = bool(p.close)
+        if p.type == 'catmull':
+            P = catmull_rom(P, max(p.divs, 1), closed)
+        elif p.type == 'bezier':
+            P = bezier(P, max(p.divs, 1))
+        geo.P = P
+        if len(P) > 1:
+            geo.add_prims([list(range(len(P)))], closed=closed and len(P) > 2)
         return geo
