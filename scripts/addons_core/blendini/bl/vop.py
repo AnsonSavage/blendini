@@ -29,7 +29,7 @@ def request_owner_cook(vop_tree):
         if tree.bl_idname != TREE_ID:
             continue
         for node in tree.nodes:
-            if getattr(node, 'sop_id', '') == 'attribvop' and node_vop_tree(node) == vop_tree:
+            if getattr(node, 'sop_id', '') in ('attribvop', 'volumevop') and node_vop_tree(node) == vop_tree:
                 cook.request_cook(tree)
                 break
 

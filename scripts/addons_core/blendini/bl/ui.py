@@ -9,6 +9,7 @@ from bpy.app.handlers import persistent
 from bpy.props import StringProperty, BoolProperty
 
 from ..sops import REGISTRY, CATEGORIES, CookError
+from ..sops.base import VOP_SOPS
 from ..core.geometry import POINT, PRIM, VERTEX, DETAIL
 from ..vex.values import type_of_array
 from .tree import TREE_ID, NODE_PREFIX, BlendiniNodeBase, update_colors
@@ -126,7 +127,7 @@ def draw_parms(node, context, layout, compact=False):
         col2.operator("blendini.edit_clear", icon='X')
     if sop.id == 'filecache':
         layout.operator("blendini.filecache_save", icon='FILE_CACHE')
-    if sop.id == 'attribvop':
+    if sop.id in VOP_SOPS:
         row = layout.row(align=True)
         row.operator("blendini.dive_in", text="Dive In (I)", icon='TRIA_DOWN_BAR')
         op = row.operator("blendini.create_spare_parms", text="", icon='ADD')
@@ -279,11 +280,11 @@ class BLENDINI_OT_dive_in(bpy.types.Operator):
         if node.sop_id == 'subnet':
             return node.subtree is not None
         from .tree import node_vop_tree
-        return node.sop_id == 'attribvop' and node_vop_tree(node) is not None
+        return node.sop_id in VOP_SOPS and node_vop_tree(node) is not None
 
     def execute(self, context):
         tree, node = _active_node(context)
-        if node.sop_id == 'attribvop':
+        if node.sop_id in VOP_SOPS:
             from .vop import VOP_TREE_ID
             from .tree import node_vop_tree
             vt = node_vop_tree(node)
@@ -318,7 +319,7 @@ class BLENDINI_OT_vop_jump_up(bpy.types.Operator):
         if back is None:
             for t in cook.all_trees():
                 from .tree import node_vop_tree
-                if any(getattr(n, 'sop_id', '') == 'attribvop' and node_vop_tree(n) == vt for n in t.nodes):
+                if any(getattr(n, 'sop_id', '') in VOP_SOPS and node_vop_tree(n) == vt for n in t.nodes):
                     back = t
                     break
         space.tree_type = TREE_ID

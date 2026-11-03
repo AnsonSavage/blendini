@@ -13,6 +13,8 @@ independent from Blender and can be unit tested with plain Python.
 import numpy as np
 
 REGISTRY = {}
+# SOPs whose VEX comes from a VOP network inside them.
+VOP_SOPS = ('attribvop', 'volumevop')
 
 # Categories in the TAB menu (Houdini style).
 CATEGORIES = ['Primitive', 'Manipulate', 'Polygon', 'Attribute', 'Group', 'Copy', 'Simulation', 'Terrain', 'Volume',

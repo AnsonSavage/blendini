@@ -13,6 +13,7 @@ from bpy.props import (
 )
 
 from ..sops import REGISTRY, CATEGORY_COLORS
+from ..sops.base import VOP_SOPS
 
 TREE_ID = 'BlendiniSOPTree'
 SOCKET_ID = 'BlendiniGeometrySocket'
@@ -168,7 +169,7 @@ class BlendiniNodeBase:
             self.display_flag = True
         if sop.id == 'subnet':
             self.subtree = make_subnet_tree(tree, self.name)
-        if sop.id == 'attribvop':
+        if sop.id in VOP_SOPS:
             from .vop import make_default_vop_tree
             vt = make_default_vop_tree("%s/%s" % (tree.name, self.name))
             self.vop_tree = vt
@@ -213,7 +214,7 @@ class BlendiniNodeBase:
             values[parm.name] = v
         if self.text is not None and 'snippet' in values:
             values['snippet'] = self.text.as_string()
-        if self.sop_id == 'attribvop':
+        if self.sop_id in VOP_SOPS:
             from .vop import generate_vex
             vt = node_vop_tree(self)
             values['voptree'] = vt.name if vt is not None else ""

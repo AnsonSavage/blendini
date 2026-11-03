@@ -300,3 +300,21 @@ class VolumeRasterizePointsSOP(SOP):
             vel = vacc / np.maximum(dens / max(p.density, 1e-9), 1e-9)[..., None]
             out.volumes.append(Volume('vel', vel, vol.origin, vs, 'fog'))
         return out
+
+
+@register_sop
+class VolumeVOPSOP(VolumeWrangleSOP):
+    """Visual VEX per voxel: the VOP network inside becomes the Volume Wrangle code (Bind 'density' ...)"""
+    id = 'volumevop'
+    label = "Volume VOP"
+    icon = 'NODE_MATERIAL'
+    description = "Volume Wrangle driven by a VOP network (dive in with I); bind volumes by name with Bind VOPs"
+    parms = (
+        Parm('voptree', "VOP Network", 'vopnetwork', description="The VOP network (dive in with I)"),
+        Parm('volume', "Reference Volume", 'string', default=''),
+    )
+
+    def cook(self, inputs, p, ctx):
+        if not p.get('snippet'):
+            return _in(inputs).copy()
+        return VolumeWrangleSOP.cook(self, inputs, p, ctx)
