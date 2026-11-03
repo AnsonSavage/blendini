@@ -315,6 +315,16 @@ def build_examples():
     _finish(t, mrg)
     trees.append(t)
 
+    t = _new_tree("vellum_balloons", (85, 0, 0))
+    sph = _node(t, 'sphere', (0, 600), type='polymesh', freq=3, rad=(0.5, 0.5, 0.5))
+    cxf = _node(t, 'copyxform', (0, 400), ncy=3, t=(1.2, 0.6, 0.0))
+    lift = _node(t, 'xform', (0, 200), t=(-1.2, 1.2, 0.0))
+    vel = _node(t, 'vellum', (0, 0), pressure=1.2, stiffness=0.4, bendstiffness=0.02)
+    col = _node(t, 'pointwrangle', (0, -200), snippet='@Cd = hsvtorgb(set(rand(floor(@ptnum / 642)), 0.6, 0.95));')
+    _chain(t, [sph, cxf, lift, vel, col])
+    _finish(t, col)
+    trees.append(t)
+
     t = _new_tree("fracture", (90, 0, 0))
     box = _node(t, 'box', (0, 600), size=(2.0, 2.0, 2.0))
     fr = _node(t, 'voronoifracture', (0, 400), npts=30, seed=4)

@@ -75,22 +75,46 @@ def mesh_volume(X, tris):
     return float(np.einsum('ij,ij->i', a, np.cross(b, c)).sum() / 6.0)
 
 
-def _volume_constraint(X, tris, target, free):
-    """PBD volume (balloon) constraint: move points along the volume gradient toward the target."""
+def _volume_constraint(X, tris, target, free, comp_tri=None, comp_pt=None):
+    """PBD volume (balloon) constraint per connected piece: move points along the volume gradient
+    toward each piece's target volume (target: array per piece, or a scalar for one piece)."""
     n = len(X)
     a, b, c = X[tris[:, 0]], X[tris[:, 1]], X[tris[:, 2]]
-    vol = float(np.einsum('ij,ij->i', a, np.cross(b, c)).sum() / 6.0)
+    triple = np.einsum('ij,ij->i', a, np.cross(b, c)) / 6.0
+    if comp_tri is None:
+        comp_tri = np.zeros(len(tris), dtype=np.int64)
+        comp_pt = np.zeros(n, dtype=np.int64)
+    k = int(comp_pt.max()) + 1 if n else 1
+    vol = np.bincount(comp_tri, weights=triple, minlength=k)
     grad = np.zeros((n, 3))
-    for k, g in ((0, np.cross(b, c)), (1, np.cross(c, a)), (2, np.cross(a, b))):
+    for idx, g in ((0, np.cross(b, c)), (1, np.cross(c, a)), (2, np.cross(a, b))):
         for axis in range(3):
-            grad[:, axis] += np.bincount(tris[:, k], weights=g[:, axis], minlength=n)
+            grad[:, axis] += np.bincount(tris[:, idx], weights=g[:, axis], minlength=n)
     grad /= 6.0
     grad[~free] = 0.0
-    denom = float(np.einsum('ij,ij->', grad, grad))
-    if denom < 1e-18:
-        return X
-    lam = (target - vol) / denom
-    return X + grad * lam
+    denom = np.bincount(comp_pt, weights=np.einsum('ij,ij->i', grad, grad), minlength=k)
+    lam = np.where(denom > 1e-18, (np.broadcast_to(target, (k,)) - vol) / np.maximum(denom, 1e-18), 0.0)
+    return X + grad * lam[comp_pt][:, None]
+
+
+def _components(n, edges):
+    """Connected component id per point (union-find over edges)."""
+    parent = np.arange(n)
+
+    def find(i):
+        root = i
+        while parent[root] != root:
+            root = parent[root]
+        while parent[i] != root:
+            parent[i], i = root, parent[i]
+        return root
+    for a_, b_ in edges.tolist():
+        ra, rb = find(a_), find(b_)
+        if ra != rb:
+            parent[ra] = rb
+    roots = np.array([find(i) for i in range(n)])
+    _, comp = np.unique(roots, return_inverse=True)
+    return comp
 
 
 def pbd_step(state, dt, p, collider):
@@ -125,7 +149,8 @@ def pbd_step(state, dt, p, collider):
             cnt += np.bincount(a, minlength=n) + np.bincount(b, minlength=n)
             X += acc / np.maximum(cnt, 1)[:, None] * 1.5
         if p.pressure > 0 and state.get('tris') is not None and len(state['tris']):
-            X = _volume_constraint(X, state['tris'], state['rest_volume'] * p.pressure, free)
+            X = _volume_constraint(X, state['tris'], state['rest_volume'] * p.pressure, free,
+                                   state['comp_tri'], state['comp_pt'])
         if p.ground:
             below = X[:, 1] < p.groundy + p.thickness
             X[below, 1] = p.groundy + p.thickness
@@ -188,10 +213,21 @@ class VellumSOP(SOP):
                 'bend': B, 'bend_rest': np.linalg.norm(geo.P[B[:, 1]] - geo.P[B[:, 0]], axis=1) if len(B) else np.zeros(0),
             }
             tris, _ = geo.triangulate_flat()
-            state['sim']['tris'] = tris
-            state['sim']['rest_volume'] = abs(mesh_volume(geo.P, tris)) if len(tris) else 0.0
-            if len(tris) and mesh_volume(geo.P, tris) < 0:
-                state['sim']['tris'] = tris[:, ::-1].copy()
+            sim = state['sim']
+            if len(tris) and p.pressure > 0:
+                comp_pt = _components(geo.num_points, E) if len(E) else np.zeros(geo.num_points, dtype=np.int64)
+                comp_tri = comp_pt[tris[:, 0]]
+                k = int(comp_pt.max()) + 1
+                A, Bv, C = geo.P[tris[:, 0]], geo.P[tris[:, 1]], geo.P[tris[:, 2]]
+                vols = np.bincount(comp_tri, weights=np.einsum('ij,ij->i', A, np.cross(Bv, C)) / 6.0, minlength=k)
+                # Pieces wound inside out: flip their triangles so every rest volume is positive.
+                flip = vols[comp_tri] < 0
+                tris = tris.copy()
+                tris[flip] = tris[flip][:, ::-1]
+                sim['tris'], sim['comp_tri'], sim['comp_pt'] = tris, comp_tri, comp_pt
+                sim['rest_volume'] = np.abs(vols)
+            else:
+                sim['tris'] = None
             state['frames'] = {start: geo.P.copy()}
             state['last'] = start
         frames = state['frames']

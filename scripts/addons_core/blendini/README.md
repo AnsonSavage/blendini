@@ -53,8 +53,8 @@ Or step by step:
 1. Enable **Blendini** in *Preferences → Add-ons*.
 2. In the 3D viewport choose *Add → Blendini Geometry*. This creates `geo1` (an object
    plus its SOP network, like `/obj/geo1`) and opens the network in a node editor.
-3. Or use *Add → Blendini Examples* to build eighteen example networks: ripple, scatter and
-   copy, plexus, city, particles, for-each, L-system tree, Vellum cloth, fracture, RBD
+3. Or use *Add → Blendini Examples* to build nineteen example networks: ripple, scatter and
+   copy, plexus, city, particles, for-each, L-system tree, Vellum cloth, Vellum balloons (pressure), fracture, RBD
    fracture, RBD hanging chain (constraint network pinned to the world), eroded terrain with a scattered forest, VEX volume cloud, pyro smoke plume and pyro fire (render as smoke / fire), FLIP dam break, VOP displacement and spiral. Press play for the simulations.
 4. In the node editor:
    - **Tab**: Houdini-style TAB menu (start typing to search). With a node selected, the new
