@@ -577,27 +577,27 @@ def _inside_faces(out, original):
 def _rbd_cleanup(state):
     """Remove a private simulation scene and everything it owns.
 
-    The scene is removed *before* its objects: removing objects that belong to a rigid body
-    world while another rigid body scene exists crashes Blender (double free).
+    Order matters to avoid crashes inside Bullet: glue constraints are freed while their bodies
+    still exist, then the rigid body world, then the scene, objects, meshes and collections in
+    a single batch removal.
     """
     scene = bpy.data.scenes.get(state.get('scene', ''))
     if scene is not None:
-        objs = list(scene.collection.objects)
-        meshes = [ob.data for ob in objs]
+        objs = list(scene.collection.all_objects)
         rbw = scene.rigidbody_world
         colls = [c for c in ((rbw.collection, rbw.constraints) if rbw is not None else ()) if c is not None]
-        bpy.data.scenes.remove(scene)
-        for ob in objs:
-            bpy.data.objects.remove(ob)
-        for mesh in meshes:
-            if mesh is not None and mesh.users == 0:
-                bpy.data.meshes.remove(mesh)
-        for coll in colls:
-            try:
-                if coll.users == 0:
-                    bpy.data.collections.remove(coll)
-            except ReferenceError:
-                pass
+        if rbw is not None:
+            # Constraints first: freeing one dereferences the Bullet bodies of its two objects,
+            # which removing the world (or an object) frees.
+            for ob in objs:
+                if ob.rigid_body_constraint is not None:
+                    with bpy.context.temp_override(scene=scene, object=ob, active_object=ob):
+                        bpy.ops.rigidbody.constraint_remove()
+            with bpy.context.temp_override(scene=scene):
+                bpy.ops.rigidbody.world_remove()
+        meshes = {ob.data for ob in objs if ob.data is not None and ob.data.users <= 1}
+        ids = [scene] + objs + list(meshes) + [c for c in colls if c.users <= 1]
+        bpy.data.batch_remove(ids)
     state.clear()
 
 

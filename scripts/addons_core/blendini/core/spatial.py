@@ -83,7 +83,7 @@ def closest(geo, points):
     try:
         from mathutils.bvhtree import BVHTree
     except ImportError:
-        return loc, nrm, prim, dist
+        return closest_numpy(geo.P, tris, tri_prim, points)
     tree = BVHTree.FromPolygons(geo.P.tolist(), tris.tolist(), all_triangles=True)
     for i, p in enumerate(np.asarray(points).tolist()):
         res = tree.find_nearest(p)
@@ -92,4 +92,65 @@ def closest(geo, points):
             nrm[i] = res[1]
             prim[i] = tri_prim[res[2]]
             dist[i] = res[3]
+    return loc, nrm, prim, dist
+
+
+def closest_point_triangles(p, a, b, c):
+    """Closest points on triangles (a, b, c) to points p, all (n, 3) (Ericson, Real-Time Collision Detection)."""
+    ab, ac, ap = b - a, c - a, p - a
+    d1, d2 = np.einsum('ij,ij->i', ab, ap), np.einsum('ij,ij->i', ac, ap)
+    bp = p - b
+    d3, d4 = np.einsum('ij,ij->i', ab, bp), np.einsum('ij,ij->i', ac, bp)
+    cp = p - c
+    d5, d6 = np.einsum('ij,ij->i', ab, cp), np.einsum('ij,ij->i', ac, cp)
+    va = d3 * d6 - d5 * d4
+    vb = d5 * d2 - d1 * d6
+    vc = d1 * d4 - d3 * d2
+    denom = va + vb + vc
+    denom = np.where(np.abs(denom) < 1e-30, 1e-30, denom)
+    v = vb / denom
+    w = vc / denom
+    out = a + ab * v[:, None] + ac * w[:, None]
+    # Edge regions.
+    sel = (vc <= 0) & (d1 >= 0) & (d3 <= 0)
+    t = d1 / np.where(np.abs(d1 - d3) < 1e-30, 1e-30, d1 - d3)
+    out = np.where(sel[:, None], a + ab * t[:, None], out)
+    sel = (vb <= 0) & (d2 >= 0) & (d6 <= 0)
+    t = d2 / np.where(np.abs(d2 - d6) < 1e-30, 1e-30, d2 - d6)
+    out = np.where(sel[:, None], a + ac * t[:, None], out)
+    sel = (va <= 0) & ((d4 - d3) >= 0) & ((d5 - d6) >= 0)
+    den = (d4 - d3) + (d5 - d6)
+    t = (d4 - d3) / np.where(np.abs(den) < 1e-30, 1e-30, den)
+    out = np.where(sel[:, None], b + (c - b) * t[:, None], out)
+    # Vertex regions.
+    out = np.where(((d6 >= 0) & (d5 <= d6))[:, None], c, out)
+    out = np.where(((d3 >= 0) & (d4 <= d3))[:, None], b, out)
+    out = np.where(((d1 <= 0) & (d2 <= 0))[:, None], a, out)
+    return out
+
+
+def closest_numpy(P, tris, tri_prim, points):
+    """Brute force closest surface point (used when mathutils is not available)."""
+    points = np.asarray(points, dtype=np.float64)
+    n, m = len(points), len(tris)
+    loc = points.copy()
+    nrm = np.zeros((n, 3))
+    prim = np.full(n, -1, dtype=np.int64)
+    dist = np.zeros(n)
+    A, B, C = P[tris[:, 0]], P[tris[:, 1]], P[tris[:, 2]]
+    fn = np.cross(B - A, C - A)
+    fn /= np.maximum(np.linalg.norm(fn, axis=1, keepdims=True), 1e-30)
+    chunk = max(1, 1_000_000 // max(m, 1))
+    for s in range(0, n, chunk):
+        q = points[s:s + chunk]
+        k = len(q)
+        qq = np.repeat(q, m, axis=0)
+        cp = closest_point_triangles(qq, np.tile(A, (k, 1)), np.tile(B, (k, 1)), np.tile(C, (k, 1)))
+        d = np.linalg.norm(cp - qq, axis=1).reshape(k, m)
+        j = np.argmin(d, axis=1)
+        rows = np.arange(k)
+        loc[s:s + chunk] = cp.reshape(k, m, 3)[rows, j]
+        dist[s:s + chunk] = d[rows, j]
+        nrm[s:s + chunk] = fn[j]
+        prim[s:s + chunk] = tri_prim[j]
     return loc, nrm, prim, dist

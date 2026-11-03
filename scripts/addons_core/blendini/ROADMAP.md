@@ -24,11 +24,13 @@ and needs a real Blender session to confirm.
 - [x] Attribute VOP (visual VEX network that generates code)
 - [x] Driver expressions on parameters evaluated through VEX (`#frame * 0.1`), keyframes
 
-### SOPs (116)
+### SOPs (124)
 - [x] Primitives, manipulation, polygon, attribute, group, copy/instancing, terrain, utility,
       Blender-backed (modifiers, bmesh, BVH, Bullet, OpenVDB) — see README for the full list
 - [x] Simulations: Solver (VEX), Vellum-style cloth (PBD), RBD (Bullet), PBF fluid + meshing
 - [x] For-Each (pieces, feedback, count), Subnetworks, Time Shift, Edit (hand edits), Bake
+- [x] Everyday additions: Enumerate, Group by Range, Switch-If, Revolve, Skin, Path Deform,
+      Distance from Geometry, Lattice
 
 ### Look and feel
 - [x] TAB menu with auto-wiring, display/template/bypass flags (buttons, hotkeys, edge bars)
@@ -41,6 +43,8 @@ and needs a real Blender session to confirm.
 - [x] Fixed: crash when an RBD simulation stepped from the frame change handler, and when
       removing one rigid body scene while another existed; RBD now pre-bakes the scene range
       (also makes command line renders correct)
+- [x] Fixed: intermittent crash when a glued RBD simulation was removed (constraints are now
+      freed before their Bullet bodies); stress-tested with random build / remove orders
 
 ## Next (in priority order)
 

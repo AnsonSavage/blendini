@@ -88,18 +88,31 @@ def main():
         # stepping a simulation from the frame change handler corrupted memory.
         from blendini.sops import REGISTRY, default_parms, CookContext, cook_sop
         from blendini.sops.blender_ops import _rbd_cleanup
-        states = []
-        for _ in range(2):
-            st = {}
-            ctx = CookContext(frame=3, time=2 / 24, state=st)
-            ctx.channels, ctx.ramps = {}, {}
-            REGISTRY['rbdsolver'].cook([cook_sop('box')], default_parms('rbdsolver'), ctx)
-            states.append(st)
-        names = [st['scene'] for st in states]
-        assert all(bpy.data.scenes.get(n) is not None for n in names)
-        for st in reversed(states):
-            _rbd_cleanup(st)
-        assert not [n for n in names if bpy.data.scenes.get(n) is not None]
+        # Glue constraints must be freed before their Bullet bodies (crashed in about 1 of 4 runs).
+        import random
+        rng = random.Random(1)
+        fractured = cook_sop('voronoifracture', [cook_sop('box')])
+        removed = []
+        for _round in range(6):
+            states = []
+            for k in range(3):
+                st = {}
+                ctx = CookContext(frame=3, time=2 / 24, state=st)
+                ctx.channels, ctx.ramps = {}, {}
+                p = default_parms('rbdsolver')
+                p['glue'] = k != 1
+                REGISTRY['rbdsolver'].cook([fractured if k else cook_sop('box')], p, ctx)
+                states.append(st)
+            names = [st['scene'] for st in states]
+            assert all(bpy.data.scenes.get(n) is not None for n in names)
+            rng.shuffle(states)
+            for st in states:
+                _rbd_cleanup(st)
+            assert not [n for n in names if bpy.data.scenes.get(n) is not None]
+            removed += names
+            bpy.context.scene.frame_set(rng.randint(1, 30))
+        leaked = [ob.name for ob in bpy.data.objects if any(ob.name.startswith(n + '_') for n in removed)]
+        assert not leaked, leaked
 
     def unregister():
         blendini.unregister()

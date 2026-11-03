@@ -494,5 +494,57 @@ class TestMoreSops(unittest.TestCase):
         np.testing.assert_allclose(back.P, geo.P, atol=1e-5)
 
 
+class TestEverydaySops(unittest.TestCase):
+    def test_enumerate_and_group_range(self):
+        g = _grid()
+        pieces = cook_sop('connectivity', [merge([g, cook_sop('box')])], class_='prim')
+        e = cook_sop('enumerate', [pieces], mode='inpiece', pieceattrib='class')
+        idx = e.attribs['prim']['index']
+        self.assertEqual(idx[0], 0)
+        self.assertEqual(idx[g.num_prims], 0)
+        r = cook_sop('grouprange', [g], select=1, of=3, offset=1)
+        self.assertEqual(np.nonzero(r.groups['prim']['range1'])[0][:3].tolist(), [1, 4, 7])
+
+    def test_switch_if(self):
+        g = _grid()
+        self.assertEqual(cook_sop('switchif', [g, Geometry()], expr='npoints(0) == %d' % g.num_points).num_points,
+                         g.num_points)
+        self.assertEqual(cook_sop('switchif', [g, Geometry()], test='attrib', attrib='nope').num_points, 0)
+
+    def test_revolve_radius(self):
+        prof = Geometry.from_polys([[1, 0, 0], [2, 1, 0], [1, 2, 0]], [[0, 1, 2]], closed=False)
+        rv = cook_sop('revolve', [prof], divs=8)
+        r = np.hypot(rv.P[:, 0], rv.P[:, 2])
+        self.assertTrue(np.allclose(np.sort(np.unique(np.round(r, 6))), [1, 2]))
+        self.assertEqual(rv.num_prims, 16)
+
+    def test_path_deform_follows_arc(self):
+        box = cook_sop('box', size=(0.2, 0.2, 4.0))
+        arc = Geometry.from_polys([[np.cos(a) * 2, 0, np.sin(a) * 2] for a in np.linspace(0, np.pi, 64)],
+                                  [list(range(64))], closed=False)
+        out = cook_sop('pathdeform', [box, arc], stretch=True)
+        r = np.hypot(out.P[:, 0], out.P[:, 2])
+        self.assertTrue(np.all(np.abs(r - 2) < 0.12))
+
+    def test_distance_and_lattice(self):
+        g = _grid()
+        d = cook_sop('distancefromgeo', [g, cook_sop('box')], maxdist=2.0)
+        dist = d.attribs['point']['dist']
+        centre = int(np.argmin(np.linalg.norm(g.P, axis=1)))
+        self.assertAlmostEqual(float(dist[centre]), 0.5, places=5)       # inside: distance to the faces
+        self.assertAlmostEqual(float(dist.max()), np.sqrt(0.5), places=5)  # grid corner to box edge
+        from blendini.sops.extra import LatticeSOP
+        s = cook_sop('sphere')
+        _axes, rp = LatticeSOP.grid(*s.bbox(), (2, 2, 2))
+        out = cook_sop('lattice', [s, Geometry.from_polys(rp), Geometry.from_polys(rp * [2, 1, 1])])
+        self.assertTrue(np.allclose(out.P, s.P * [2, 1, 1], atol=1e-6))
+
+    def test_skin(self):
+        rows = Geometry.from_polys([[x, y, 0] for y in range(3) for x in range(4)],
+                                   [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], closed=False)
+        out = cook_sop('skin', [rows])
+        self.assertEqual(out.num_prims, 6)
+
+
 if __name__ == '__main__':
     unittest.main()
