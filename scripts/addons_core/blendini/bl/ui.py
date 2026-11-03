@@ -135,6 +135,15 @@ def draw_parms(node, context, layout, compact=False):
             for line in node.parm_values().get('snippet', '').splitlines()[:40]:
                 code_col.label(text=line)
     if sop.id == 'subnet':
+        box = layout.box()
+        row = box.row(align=True)
+        row.label(text="Promoted Parameters", icon='PROPERTIES')
+        for kind, icon in (('float', 'IPO_LINEAR'), ('int', 'LINENUMBERS_ON'), ('vector', 'EMPTY_AXIS')):
+            op = row.operator("blendini.add_parameter", text="", icon=icon)
+            op.node_name = node.name
+            op.kind = kind
+        _draw_spare(node, box, compact)
+        box.label(text='Inside: ch("name") in VEX, or a #ch("name") driver')
         row = layout.row(align=True)
         row.prop(node, "subtree", text="")
         row.operator("blendini.dive_in", text="Dive In", icon='TRIA_DOWN_BAR')
@@ -632,6 +641,37 @@ def create_spare_parms(node):
             ramp_node(sp.ramp_key, create=True)
         added += 1
     return added
+
+
+class BLENDINI_OT_add_parameter(bpy.types.Operator):
+    """Add a parameter to this node (on a subnet, everything inside can read it with ch())"""
+    bl_idname = "blendini.add_parameter"
+    bl_label = "Add Parameter"
+    bl_options = {'REGISTER', 'UNDO'}
+    node_name: StringProperty()
+    kind: StringProperty(default='float')
+    parm_name: StringProperty(name="Name", default="parm")
+
+    def invoke(self, context, event):
+        tree, node = _get_node(context, self.node_name)
+        if node is None:
+            return {'CANCELLED'}
+        existing = {sp.name for sp in node.spare}
+        i = 1
+        while "parm%d" % i in existing:
+            i += 1
+        self.parm_name = "parm%d" % i
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        tree, node = _get_node(context, self.node_name)
+        if node is None:
+            return {'CANCELLED'}
+        sp = node.spare.add()
+        sp.name = self.parm_name.strip() or "parm"
+        sp.kind = self.kind if self.kind in ('float', 'int', 'vector', 'color', 'string') else 'float'
+        cook.request_cook(tree)
+        return {'FINISHED'}
 
 
 class BLENDINI_OT_remove_spare_parm(bpy.types.Operator):
@@ -1400,6 +1440,7 @@ classes = (
     BLENDINI_OT_edit_code,
     BLENDINI_OT_create_spare_parms,
     BLENDINI_OT_remove_spare_parm,
+    BLENDINI_OT_add_parameter,
     BLENDINI_OT_new_network,
     BLENDINI_OT_houdini_theme,
     BLENDINI_OT_houdini_layout,

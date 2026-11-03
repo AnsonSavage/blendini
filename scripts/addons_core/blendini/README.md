@@ -101,7 +101,7 @@ See [ROADMAP.md](ROADMAP.md) for what is done and what is planned.
 | Wrangles, VEX, `ch()` spare parameters | Wrangles with the SIMD VEX interpreter, **+** creates spare parameters, ramps via `chramp()` |
 | Attribute VOP | Attribute VOP, **I** dives into the VOP network, **U** comes back |
 | `$F`, `$T`, keyframes | Driver expressions such as `#frame * 0.1` (evaluated by Blendini), keyframes with **I** |
-| Subnets / digital assets | Subnetwork node, **I** / **U** to dive in and out |
+| Subnets / digital assets | Subnetwork node, **I** / **U** to dive in and out, promoted parameters (`ch("name")` inside) |
 | Packed primitives | *Pack and Instance* on Copy to Points, Pack, Assemble; rendered as Blender instances |
 | SOP Solver, Vellum, RBD (Bullet), FLIP | Solver (VEX), Vellum Cloth (PBD), RBD Bullet Solver, Fluid Solver (PBF) + Particle Fluid Surface |
 | VDB | OpenVDB through Geometry Nodes (Particle Fluid Surface, Remesh) |
@@ -135,7 +135,7 @@ See [ROADMAP.md](ROADMAP.md) for what is done and what is planned.
 | Group     | Group Create (pattern / bounding box / normal / random / `@expression`), Group Combine, Group Promote, Blast, Delete, Split (two outputs) |
 | Copy      | Copy to Points (orient, N/up, pscale, scale, piece variants, **Pack and Instance**), Pack, Unpack, Assemble, Copy and Transform, Scatter, Points from Volume\* |
 | VEX       | Attribute Wrangle (run over points / prims / vertices / detail / numbers), **Point Wrangle**, Primitive Wrangle, Detail Wrangle, **Attribute VOP** (visual VEX: Globals, Bind, Parameter, Ramp, math, logic / two-way switch, vector, noise and color VOPs; dive in with I; shows the generated VEX) |
-| Utility   | File (.obj), **Subnetwork** + Subnet Input (dive in with I, up with U), Merge (multi-input), Switch, Null, Output, Sort, Time Shift, **Block Begin / Block End (For-Each by pieces, count or feedback)** |
+| Utility   | File (.obj), **Subnetwork** + Subnet Input (dive in with I, up with U; promoted parameters readable inside with `ch()`), Merge (multi-input), Switch, Null, Output, Sort, Time Shift, **Block Begin / Block End (For-Each by pieces, count or feedback)** |
 | Blender   | Object Merge (meshes and curves, several objects / wildcards), Solidify\*, **Blender Modifier\*** (any modifier, including Geometry Nodes groups) |
 
 \* These use Blender as the backend. The geometry passes through a real Blender modifier,

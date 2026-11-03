@@ -47,6 +47,8 @@ and needs a real Blender session to confirm.
 
 ## Later / ideas
 
+- [x] Subnet promoted parameters (HDA-style interface: `ch()` in wrangles and drivers inside)
+
 - [x] Multi-output nodes (cook engine reads the linked output) with the Split SOP
 - [x] VEX function overloading by signature, function-like `#define` macros
 - [x] VEX `struct`s (defaults, constructors, members, function parameters / returns)

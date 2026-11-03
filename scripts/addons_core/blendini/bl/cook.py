@@ -232,6 +232,10 @@ def cook_node(node, ctx_base, visiting=None):
                 input_sigs.append(s)
         parms = node.parm_values()
         channels = node.channels()
+        inherited = ctx_base.get('subnet_channels')
+        if inherited:
+            # Parameters promoted to an enclosing subnet: ch("name") falls back to them.
+            channels = dict(inherited, **channels)
         ramps = node.ramps() if len(node.spare) else {}
         if sop.id == 'edit':
             idx, d = node.edit_deltas()
@@ -321,7 +325,9 @@ def _cook_subnet(node, ctx_base, visiting):
         return Geometry(), ('subnet-empty',)
     ctx2 = dict(ctx_base)
     ctx2['subnet_inputs'] = (inputs, sigs)
-    ctx2['loopsig'] = (ctx_base.get('loopsig'), 'subnet', node.name, tuple(sigs))
+    ctx2['subnet_channels'] = dict(ctx_base.get('subnet_channels') or {}, **node.channels())
+    ctx2['loopsig'] = (ctx_base.get('loopsig'), 'subnet', node.name, tuple(sigs),
+                       tuple(sorted((k, _freeze(v)) for k, v in ctx2['subnet_channels'].items())))
     geo, sig = cook_node(out, ctx2, visiting)
     key = _node_key(node)
     inner_info = _cache.get(_node_key(out), {})

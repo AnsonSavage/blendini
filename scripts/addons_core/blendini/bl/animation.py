@@ -50,7 +50,7 @@ def _assign(tree, data_path, index, value):
         pass
 
 
-def eval_driver_expression(expr, frame, fps):
+def eval_driver_expression(expr, frame, fps, channels=None):
     """Evaluate a driver expression with the VEX interpreter. Returns a float or None."""
     import numpy as np
     from ..vex.wrangle import run_wrangle
@@ -61,7 +61,8 @@ def eval_driver_expression(expr, frame, fps):
     code = ("float frame = @Frame; float time = @Time; float fps = %r;\n"
             "f@__value = (%s);" % (float(fps), expr))
     try:
-        geo, _msgs = run_wrangle(code, [Geometry()], run_over='detail', frame=frame, time=(frame - 1) / fps, fps=fps)
+        geo, _msgs = run_wrangle(code, [Geometry()], run_over='detail', frame=frame, time=(frame - 1) / fps, fps=fps,
+                                 channels=channels)
     except Exception as ex:
         if _expr_cache.get(expr) != str(ex):
             print("Blendini: can't evaluate driver '%s': %s" % (expr, ex))
@@ -71,10 +72,28 @@ def eval_driver_expression(expr, frame, fps):
     return float(np.asarray(v).ravel()[0]) if v is not None else None
 
 
+def subnet_channels(tree):
+    """Parameters of the subnet node(s) that contain this network (innermost wins)."""
+    chain = []
+    depth = 0
+    while tree is not None and getattr(tree, 'owner_tree', None) is not None and depth < 32:
+        owner = tree.owner_tree
+        node = next((n for n in owner.nodes if getattr(n, 'subtree', None) == tree), None)
+        if node is not None:
+            chain.append(node.channels())
+        tree = owner
+        depth += 1
+    out = {}
+    for ch in reversed(chain):
+        out.update(ch)
+    return out
+
+
 def apply_animation(tree, frame, fps):
     ad = tree.animation_data
     if ad is None:
         return False
+    channels = subnet_channels(tree)
     changed = False
     for fc in _fcurves(ad):
         if fc.mute:
@@ -86,7 +105,7 @@ def apply_animation(tree, frame, fps):
             continue
         drv = fc.driver
         if drv.type == 'SCRIPTED':
-            value = eval_driver_expression(drv.expression, frame, fps)
+            value = eval_driver_expression(drv.expression, frame, fps, channels)
             if value is None:
                 continue
         else:
