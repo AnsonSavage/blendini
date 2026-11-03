@@ -365,8 +365,12 @@ def _cook_foreach(end, ctx_base, visiting):
                 ctx2['loopsig'] = (ctx_base.get('loopsig'), begin.name, src_sig, i)
                 geo, _s = cook_node(end_inputs[0], ctx2, visiting)
         else:
-            pieces = split_pieces(src, parms['attrib'].strip(), parms['elemtype'])
-            if parms['maxpieces'] > 0:
+            if parms['method'] == 'count':
+                # Like Houdini's "By Count": the whole input, N times, results merged.
+                pieces = [src.copy() for _ in range(min(max(int(parms['iterations']), 0), 10000))]
+            else:
+                pieces = split_pieces(src, parms['attrib'].strip(), parms['elemtype'])
+            if parms['maxpieces'] > 0 and parms['method'] != 'count':
                 pieces = pieces[:parms['maxpieces']]
             for i, piece in enumerate(pieces):
                 piece.attribs[DETAIL]['iteration'] = np.array([i], dtype=np.int64)

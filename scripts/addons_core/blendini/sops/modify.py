@@ -1411,6 +1411,7 @@ class AttribNoiseSOP(SOP):
 FOREACH_METHODS = [
     ('piece', "By Pieces or Points", "Run once per connected piece / unique attribute value"),
     ('feedback', "Fetch Feedback", "Run N times, feeding each iteration's result into the next"),
+    ('count', "By Count", "Run N times on the whole input and merge the results"),
 ]
 
 
@@ -1437,12 +1438,12 @@ class ForEachEndSOP(SOP):
     description = "End of a For-Each block. Merges (or feeds back) the results of every iteration"
     parms = (
         Parm('method', "Iteration Method", 'enum', items=FOREACH_METHODS),
-        Parm('attrib', "Piece Attribute", 'string', default='class', hide_when={'method': 'feedback'},
+        Parm('attrib', "Piece Attribute", 'string', default='class', hide_when={'method': ('feedback', 'count')},
              description="Primitive attribute defining pieces. Connected pieces are used when it doesn't exist"),
         Parm('elemtype', "Piece Elements", 'enum', items=[('prim', "Primitives", ""), ('point', "Points", "")],
-             hide_when={'method': 'feedback'}),
+             hide_when={'method': ('feedback', 'count')}),
         Parm('iterations', "Iterations", 'int', default=5, min=0, soft_max=100),
-        Parm('maxpieces', "Max Pieces (0 = all)", 'int', default=0, min=0, hide_when={'method': 'feedback'}),
+        Parm('maxpieces', "Max Pieces (0 = all)", 'int', default=0, min=0, hide_when={'method': ('feedback', 'count')}),
     )
 
     def cook(self, inputs, p, ctx):

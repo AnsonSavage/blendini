@@ -130,7 +130,7 @@ See [ROADMAP.md](ROADMAP.md) for what is done and what is planned.
 | Group     | Group Create (pattern / bounding box / normal / random / `@expression`), Group Combine, Group Promote, Blast |
 | Copy      | Copy to Points (orient, N/up, pscale, scale, piece variants, **Pack and Instance**), Pack, Unpack, Assemble, Copy and Transform, Scatter, Points from Volume\* |
 | VEX       | Attribute Wrangle (run over points / prims / vertices / detail / numbers), **Point Wrangle**, Primitive Wrangle, Detail Wrangle, **Attribute VOP** (visual VEX: Globals, Bind, Parameter, math, vector, noise and color VOPs; dive in with I; shows the generated VEX) |
-| Utility   | File (.obj), **Subnetwork** + Subnet Input (dive in with I, up with U), Merge (multi-input), Switch, Null, Output, Sort, Time Shift, **Block Begin / Block End (For-Each pieces or feedback)** |
+| Utility   | File (.obj), **Subnetwork** + Subnet Input (dive in with I, up with U), Merge (multi-input), Switch, Null, Output, Sort, Time Shift, **Block Begin / Block End (For-Each by pieces, count or feedback)** |
 | Blender   | Object Merge (meshes and curves, several objects / wildcards), Solidify\*, **Blender Modifier\*** (any modifier, including Geometry Nodes groups) |
 
 \* These use Blender as the backend. The geometry passes through a real Blender modifier,

@@ -28,7 +28,7 @@ and needs a real Blender session to confirm.
 - [x] Primitives, manipulation, polygon, attribute, group, copy/instancing, terrain, utility,
       Blender-backed (modifiers, bmesh, BVH, Bullet, OpenVDB) — see README for the full list
 - [x] Simulations: Solver (VEX), Vellum-style cloth (PBD), RBD (Bullet), PBF fluid + meshing
-- [x] For-Each (pieces, feedback), Subnetworks, Time Shift, Edit (hand edits), Bake
+- [x] For-Each (pieces, feedback, count), Subnetworks, Time Shift, Edit (hand edits), Bake
 
 ### Look and feel
 - [x] TAB menu with auto-wiring, display/template/bypass flags (buttons, hotkeys, edge bars)
@@ -38,7 +38,7 @@ and needs a real Blender session to confirm.
 
 ## Next (in priority order)
 
-- [ ] For-Each "by count" (run N iterations and merge, without feedback)
+- [x] For-Each "by count" (run N iterations and merge, without feedback)
 - [ ] More VOP nodes: compare + two-way switch, ramp (chramp), trig/exp/min/max, random vector
 - [ ] VDB nodes through Geometry Nodes: VDB from Polygons, Convert VDB (volume to mesh)
 - [ ] Delete SOP (by number, by expression, by bounding box) as in Houdini
