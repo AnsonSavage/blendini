@@ -6,6 +6,8 @@
 
 import bpy
 
+from ..sops import REGISTRY
+
 from .tree import TREE_ID, NODE_PREFIX, BlendiniNodeBase
 
 RIPPLE = """\
@@ -378,7 +380,23 @@ def build_examples():
     col = _node(t, 'pointwrangle', (0, -200), snippet=TERRAIN)
     _spare(col, maxh=2.6)
     _chain(t, [hf, nz, er, nm, col])
-    _finish(t, col)
+    # Forest: trees on gentle slopes below the snow line.
+    mask = _node(t, 'hfmaskbyfeature', (350, 0), slopemax=22.0, useheight=True, heightmin=-5.0, heightmax=1.4,
+                 noise=0.5, visualize=False)
+    scat = _node(t, 'hfscatter', (350, -200), count=600, seed=3, pscalemin=0.5, pscalemax=1.1)
+    cone = _node(t, 'tube', (600, -200), rad1=0.0, rad2=0.09, height=0.45, cols=8, t=(0.0, 0.2, 0.0))
+    green = _node(t, 'color', (600, -400), color=(0.12, 0.32, 0.12)) if 'color' in REGISTRY else cone
+    copy = _node(t, 'copytopoints', (350, -400))
+    mrg = _node(t, 'merge', (0, -500))
+    t.links.new(er.outputs[0], mask.inputs[0])
+    t.links.new(mask.outputs[0], scat.inputs[0])
+    if green is not cone:
+        t.links.new(cone.outputs[0], green.inputs[0])
+    t.links.new(green.outputs[0], copy.inputs[0])
+    t.links.new(scat.outputs[0], copy.inputs[1])
+    t.links.new(col.outputs[0], mrg.inputs[0])
+    t.links.new(copy.outputs[0], mrg.inputs[0])
+    _finish(t, mrg)
     trees.append(t)
 
     t = _new_tree("fluid_dambreak", (130, 0, 0))

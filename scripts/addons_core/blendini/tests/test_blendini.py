@@ -722,6 +722,21 @@ class TestEverydaySops(unittest.TestCase):
         out = cook_sop('material', [cook_sop('box')], group='0-2', material='Red')
         self.assertEqual(list(out.attribs['prim']['shop_materialpath']), ['Red'] * 3 + [''] * 3)
 
+    def test_heightfield_mask_scatter(self):
+        hf = cook_sop('hfnoise', [cook_sop('heightfield', size=(8.0, 8.0), gridspacing=0.25)], amp=2.0, elementsize=4.0)
+        m = cook_sop('hfmaskbyfeature', [hf], slopemax=20.0)
+        mask = m.attribs['point']['mask']
+        self.assertTrue(0 < mask.mean() < 1)
+        s = cook_sop('hfscatter', [m], count=200)
+        self.assertEqual(s.num_points, 200)
+        self.assertGreater(s.attribs['point']['mask'].mean(), mask.mean())
+        self.assertTrue({'N', 'up', 'pscale'} <= set(s.attribs['point']))
+        b = cook_sop('hfblur', [hf], iterations=8)
+        self.assertLess(b.P[:, 1].std(), hf.P[:, 1].std())
+        t = cook_sop('hfterrace', [hf], spacing=0.5, sharpness=1.0)
+        frac = np.mod(t.P[:, 1], 0.5)
+        self.assertGreater(np.mean((frac < 0.05) | (frac > 0.45)), 0.5)   # mostly flat treads
+
     def test_skin(self):
         rows = Geometry.from_polys([[x, y, 0] for y in range(3) for x in range(4)],
                                    [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], closed=False)

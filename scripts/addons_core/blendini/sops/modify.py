@@ -695,7 +695,7 @@ class SortSOP(SOP):
         if kind in ('x', 'y', 'z'):
             return np.argsort(pos[:, 'xyz'.index(kind)], kind='stable')
         if kind == 'random':
-            return np.random.RandomState(seed).permutation(n)
+            return np.random.RandomState(int(seed) & 0x7FFFFFFF).permutation(n)
         return np.arange(n)[::-1]
 
     def cook(self, inputs, p, ctx):
@@ -2623,7 +2623,21 @@ class RelaxSOP(SOP):
             # Automatic: spacing of n points spread over the bounding area.
             ext = np.sort(np.maximum(hi - lo, 1e-9))[::-1]
             r = 2.0 * np.sqrt(ext[0] * ext[1] / n) if ext[1] > 1e-6 * ext[0] else 2.0 * ext[0] / n
+        from .fluid import neighbour_pairs
         for _ in range(int(p.iterations)):
+            I, J = neighbour_pairs(P, r)
+            if len(I) <= 32 * n:
+                # Vectorized: every pair pushes both points apart.
+                d = P[I] - P[J]
+                dist = np.linalg.norm(d, axis=1, keepdims=True)
+                push = d / np.maximum(dist, 1e-12) * np.maximum(r - dist, 0) * 0.5
+                disp = np.stack([np.bincount(I, weights=push[:, k], minlength=n) for k in range(3)], axis=1)
+                P = P + disp * p.strength
+                if surface.num_prims:
+                    loc, _nrm, prim, _dist = closest(surface, P)
+                    P = np.where((prim >= 0)[:, None], loc, P)
+                continue
+            # Very dense (radius much bigger than the spacing): nearest 16 neighbours per point.
             res = _near_search(P, P, np.full(n, r), np.full(n, 16), np.arange(n))
             disp = np.zeros_like(P)
             for i, nb in enumerate(res):

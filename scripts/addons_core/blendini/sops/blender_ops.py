@@ -44,6 +44,19 @@ def remove_stale_rbd_scenes():
             _rbd_cleanup({'scene': scene.name})
 
 
+def check_voxel_count(geos, voxelsize, limit=64e6):
+    """Refuse grids that would take Blender minutes (or all memory) to build."""
+    pts = [g.P for g in geos if g is not None and g.num_points]
+    if not pts:
+        return
+    allp = np.concatenate(pts)
+    extent = allp.max(axis=0) - allp.min(axis=0)
+    cells = float(np.prod(np.maximum(extent / max(voxelsize, 1e-6), 1)))
+    if cells > limit:
+        raise CookError("Voxel size %.4g is too small for this geometry (%.0fM voxels); use a bigger voxel size"
+                        % (voxelsize, cells / 1e6))
+
+
 def _in(inputs, i=0):
     if len(inputs) > i and inputs[i] is not None:
         return inputs[i]
@@ -200,6 +213,8 @@ class RemeshSOP(SOP):
     )
 
     def cook(self, inputs, p, ctx):
+        check_voxel_count([_in(inputs)], max(p.voxelsize, 0.001))
+
         def settings(mod, _):
             mod.mode = 'VOXEL'
             mod.voxel_size = max(p.voxelsize, 0.001)
@@ -990,6 +1005,7 @@ class ParticleFluidSurfaceSOP(SOP):
         geo = _in(inputs)
         if geo.num_points == 0:
             return Geometry()
+        check_voxel_count([geo], max(p.particlesep * p.voxelscale, 1e-6))
         pts = Geometry()
         pts.P = geo.P
         ng = _surface_group()
@@ -1202,6 +1218,7 @@ class VDBCombineSOP(SOP):
         a, b = _in(inputs, 0), _in(inputs, 1)
         if a.num_prims == 0 or b.num_prims == 0:
             return a.copy() if b.num_prims == 0 else (b.copy() if p.operation == 'UNION' else Geometry())
+        check_voxel_count([a, b], max(p.voxelsize, 1e-4))
         ng = _new_sdf_group("_blendini_vdbcombine")
         gin = ng.nodes.new('NodeGroupInput')
         gout = ng.nodes.new('NodeGroupOutput')

@@ -218,11 +218,13 @@ class RevolveSOP(SOP):
                 u_attr.append(np.full(m, r / divs))
                 v_attr.append(np.linspace(0, 1, m))
             cols = m if closed else m - 1
-            for r in range(divs):
-                r1 = (r + 1) % rings
-                for j in range(cols):
-                    j1 = (j + 1) % m
-                    polys.append([offset + r * m + j, offset + r * m + j1, offset + r1 * m + j1, offset + r1 * m + j])
+            r = np.arange(divs)[:, None]
+            r1 = (r + 1) % rings
+            j = np.arange(cols)[None, :]
+            j1 = (j + 1) % m
+            quads = np.stack(np.broadcast_arrays(offset + r * m + j, offset + r * m + j1, offset + r1 * m + j1,
+                                                 offset + r1 * m + j), axis=-1).reshape(-1, 4)
+            polys.append(quads)
             if p.endcaps and closed and not full:
                 caps.append([offset + j for j in range(m)])
                 caps.append([offset + (rings - 1) * m + j for j in range(m)][::-1])
@@ -233,7 +235,9 @@ class RevolveSOP(SOP):
         _copy_point_attribs(src, out, np.concatenate(idx_all))
         out.attribs[POINT]['revolveu'] = np.concatenate(u_attr)
         out.attribs[POINT]['revolvev'] = np.concatenate(v_attr)
-        out.add_prims(polys)
+        if polys:
+            q = np.concatenate(polys)
+            out.add_prims_flat(np.full(len(q), 4), q.ravel())
         if caps:
             out.add_prims(caps)
         return out
@@ -281,10 +285,12 @@ class SkinSOP(SOP):
                                 % (i, j, len(pi), len(pj)))
             m = len(pi)
             cols = m if ci else m - 1
-            for k in range(cols):
-                k1 = (k + 1) % m
-                quads.append([pi[k], pi[k1], pj[k1], pj[k]])
-        out.add_prims(quads)
+            k = np.arange(cols)
+            k1 = (k + 1) % m
+            quads.append(np.stack([pi[k], pi[k1], pj[k1], pj[k]], axis=1))
+        if quads:
+            q = np.concatenate(quads)
+            out.add_prims_flat(np.full(len(q), 4), q.ravel())
         return out
 
 
@@ -677,6 +683,8 @@ class _AttribAdjustBase(SOP):
             old = np.full((n, size), dflt if np.ndim(dflt) == 0 else 0.0, dtype=np.float64)
             if size == 1:
                 old = old[:, 0]
+        if n == 0:
+            return geo
         cur = np.array(old, dtype=np.float64, copy=True).reshape(n, -1)
         if cur.shape[1] != size:
             raise CookError("%s: '%s' has %d components, expected %d" % (self.label, name, cur.shape[1], size))
@@ -833,7 +841,7 @@ class OcclusionSOP(SOP):
             N = geo.point_normals()
         N = N / np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
         k = max(int(p.rays), 1)
-        rng = np.random.default_rng(p.seed)
+        rng = np.random.default_rng(int(p.seed) & 0x7FFFFFFF)
         # Cosine weighted hemisphere directions (shared pattern, rotated per point).
         u = rng.random((k, 2))
         r = np.sqrt(u[:, 0])

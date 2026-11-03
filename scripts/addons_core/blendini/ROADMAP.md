@@ -25,13 +25,14 @@ and needs a real Blender session to confirm.
 - [x] Attribute VOP (visual VEX network that generates code)
 - [x] Driver expressions on parameters evaluated through VEX (`#frame * 0.1`), keyframes
 
-### SOPs (141)
+### SOPs (145)
 - [x] Primitives, manipulation, polygon, attribute, group, copy/instancing, terrain, utility,
       Blender-backed (modifiers, bmesh, BVH, Bullet, OpenVDB) — see README for the full list
 - [x] Simulations: Solver (VEX), Vellum-style cloth (PBD), RBD (Bullet), PBF fluid + meshing, Pyro smoke
 - [x] For-Each (pieces, feedback, count), Subnetworks, Time Shift, Edit (hand edits), Bake,
       File Cache (lossless .npz per frame, Save to Disk / Load from Disk), Material (material slots
       from shop_materialpath)
+- [x] Terrain: HeightField Mask by Feature, HeightField Scatter, HeightField Terrace, HeightField Blur
 - [x] Everyday additions: Enumerate, Group by Range, Switch-If, Revolve, Skin, Path Deform,
       Distance from Geometry, Lattice, UV Transform, UV Layout, Attribute Adjust Float / Vector,
       Extract Centroid, Group from Attribute Boundary, Calculate Occlusion

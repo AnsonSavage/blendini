@@ -90,7 +90,7 @@ def pbf_step(st, dt, p):
             grad_i[:, k] = np.bincount(I, weights=grad[:, k], minlength=n)
         sum_grad2 = np.bincount(I, weights=np.einsum('ij,ij->i', grad, grad), minlength=n) \
             + np.einsum('ij,ij->i', grad_i, grad_i)
-        lam = -C / (sum_grad2 + p.relaxation * st['grad2_rest'])
+        lam = -C / np.maximum(sum_grad2 + p.relaxation * st['grad2_rest'], 1e-12)
         # The one-sided constraint already avoids tensile clumping, so no artificial pressure term.
         coef = lam[I] + lam[J]
         dP = np.zeros((n, 3))
