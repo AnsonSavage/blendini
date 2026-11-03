@@ -1189,3 +1189,132 @@ class AttribPaintSOP(SOP):
             base = np.full((n, 3), 0.75) if cd is None or cd.dtype == object else cd
             geo.attribs[POINT]['Cd'] = base * (1 - out[:, None]) + np.array([0.9, 0.1, 0.05]) * out[:, None]
         return geo
+
+
+FALLOFFS = [('smooth', "Smooth", ""), ('linear', "Linear", ""), ('sharp', "Sharp", ""), ('constant', "Constant", "")]
+
+
+def falloff(d, radius, kind):
+    """Weight 1 at distance 0 fading to 0 at the radius."""
+    x = np.clip(d / max(radius, 1e-9), 0, 1)
+    if kind == 'linear':
+        return 1 - x
+    if kind == 'sharp':
+        return (1 - x) ** 3
+    if kind == 'constant':
+        return (x < 1).astype(np.float64)
+    return 1 - x * x * (3 - 2 * x)
+
+
+@register_sop
+class SoftTransformSOP(SOP):
+    id = 'softxform'
+    label = "Soft Transform"
+    category = 'Manipulate'
+    inputs = 1
+    icon = 'PROP_ON'
+    description = "Transform a group of points, with neighbours within the radius following by a falloff"
+    parms = (
+        Parm('group', "Group", 'string', default='0', description="Points that move fully"),
+        Parm('t', "Translate", 'vector', default=(0.0, 0.5, 0.0)),
+        Parm('r', "Rotate", 'vector'),
+        Parm('s', "Scale", 'vector', default=(1.0, 1.0, 1.0)),
+        Parm('radius', "Soft Radius", 'float', default=1.0, min=0.0, soft_max=10.0),
+        Parm('falloff', "Falloff", 'enum', items=FALLOFFS),
+        Parm('distmetric', "Distance", 'enum', items=[('dist', "Straight Line", ""), ('edges', "Along Edges", "")]),
+    )
+
+    def cook(self, inputs, p, ctx):
+        from .base import transform_matrix
+        geo = _in(inputs).copy()
+        n = geo.num_points
+        if n == 0:
+            return geo
+        sel = parse_group_pattern(geo, 'point', p.group)
+        if not sel.any():
+            return geo
+        P = geo.P
+        if p.distmetric == 'edges' and geo.num_prims:
+            dist = _edge_distance(geo, sel, p.radius)
+        else:
+            from ..core import spatial
+            _idx, dist = spatial.nearest(P[sel], P)
+        w = falloff(dist, p.radius, p.falloff) if p.radius > 0 else sel.astype(np.float64)
+        w[sel] = 1.0
+        pivot = P[sel].mean(axis=0)
+        M = transform_matrix(t=p.t, r=p.r, s=p.s, pivot=pivot)
+        moved = P @ M[:3, :3].T + M[:3, 3]
+        geo.P = P + (moved - P) * w[:, None]
+        geo.attribs[POINT]['softweight'] = w
+        return geo
+
+
+def _edge_distance(geo, sources, limit):
+    """Dijkstra distance along edges from the source points (inf beyond the limit)."""
+    import heapq
+    n = geo.num_points
+    E = geo.edges()
+    lengths = np.linalg.norm(geo.P[E[:, 0]] - geo.P[E[:, 1]], axis=1)
+    adj = [[] for _ in range(n)]
+    for (a, b), l in zip(E.tolist(), lengths.tolist()):
+        adj[a].append((b, l))
+        adj[b].append((a, l))
+    dist = np.full(n, np.inf)
+    heap = [(0.0, int(i)) for i in np.nonzero(sources)[0]]
+    for _d, i in heap:
+        dist[i] = 0.0
+    heapq.heapify(heap)
+    while heap:
+        d, i = heapq.heappop(heap)
+        if d > dist[i] or d > limit:
+            continue
+        for j, l in adj[i]:
+            nd = d + l
+            if nd < dist[j]:
+                dist[j] = nd
+                heapq.heappush(heap, (nd, j))
+    return dist
+
+
+@register_sop
+class MagnetSOP(SOP):
+    id = 'magnet'
+    label = "Magnet"
+    category = 'Manipulate'
+    inputs = 2
+    input_labels = ("Geometry", "Magnets (points, pscale = radius)")
+    icon = 'SNAP_ON'
+    description = "Push, pull or scale points near the magnet points of the second input, with a falloff"
+    parms = (
+        Parm('mode', "Effect", 'enum', items=[('translate', "Translate", ""), ('push', "Push Out (radial)", ""),
+                                              ('scale', "Scale Around Magnet", "")]),
+        Parm('t', "Translate", 'vector', default=(0.0, 0.5, 0.0), hide_when={'mode': ('push', 'scale')}),
+        Parm('amount', "Amount", 'float', default=0.3, soft_min=-2.0, soft_max=2.0, hide_when={'mode': 'translate'}),
+        Parm('radius', "Radius", 'float', default=1.0, min=0.0, soft_max=10.0, description="Multiplied by pscale"),
+        Parm('falloff', "Falloff", 'enum', items=FALLOFFS),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs, 0).copy()
+        mags = _in(inputs, 1)
+        if geo.num_points == 0 or mags.num_points == 0:
+            if mags.num_points == 0:
+                ctx.warn("Magnet: connect magnet points to the second input")
+            return geo
+        P = geo.P.copy()
+        ps = mags.attribs[POINT].get('pscale')
+        rad = (np.asarray(ps, dtype=np.float64) if ps is not None and ps.dtype != object
+               else np.ones(mags.num_points)) * p.radius
+        disp = np.zeros_like(P)
+        for c, r in zip(mags.P, rad):
+            d = P - c
+            dist = np.linalg.norm(d, axis=1)
+            w = falloff(dist, r, p.falloff)
+            if p.mode == 'translate':
+                disp += w[:, None] * np.asarray(p.t, dtype=np.float64)
+            elif p.mode == 'push':
+                disp += w[:, None] * d / np.maximum(dist, 1e-9)[:, None] * p.amount
+            else:
+                disp += w[:, None] * d * p.amount
+        geo.P = P + disp
+        return geo

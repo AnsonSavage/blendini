@@ -834,6 +834,19 @@ class TestEverydaySops(unittest.TestCase):
         out2 = REGISTRY['attribpaint'].cook([g], default_parms('attribpaint'), ctx2)
         self.assertTrue(np.all(out2.attribs['point']['mask'] == 0) and ctx2.warnings)
 
+    def test_soft_transform_and_magnet(self):
+        g = cook_sop('grid', rows=21, cols=21, size=(4.0, 4.0))
+        c = int(np.argmin(np.linalg.norm(g.P, axis=1)))
+        s = cook_sop('softxform', [g], group=str(c), t=(0, 1, 0), radius=1.0)
+        y = s.P[:, 1]
+        self.assertAlmostEqual(float(y[c]), 1.0)
+        self.assertTrue(np.all(y[np.linalg.norm(g.P, axis=1) > 1.0 + 1e-9] == 0))
+        e = cook_sop('softxform', [g], group=str(c), t=(0, 1, 0), radius=1.0, distmetric='edges')
+        self.assertLess(int((e.P[:, 1] > 1e-6).sum()), int((y > 1e-6).sum()))
+        m = cook_sop('magnet', [g, Geometry.from_polys([[0.0, 0, 0]])], t=(0, 1, 0), radius=0.5)
+        self.assertAlmostEqual(float(m.P[c, 1]), 1.0)
+        self.assertEqual(float(m.P[0, 1]), 0.0)
+
     def test_skin(self):
         rows = Geometry.from_polys([[x, y, 0] for y in range(3) for x in range(4)],
                                    [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], closed=False)
