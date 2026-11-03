@@ -494,9 +494,14 @@ class Interpreter:
 
     def call(self, node, mask, hint):
         name = node.name
-        fn = self.functions.get(name)
-        if fn is not None:
-            return self.call_user(fn, node, mask)
+        fns = self.functions.get(name)
+        if fns:
+            candidates = [f for f in fns if len(f.params) == len(node.args)] or fns
+            if len(candidates) == 1:
+                return self.call_user(candidates[0], node, mask)
+            # Overloads: pick the signature that best matches the argument types.
+            values = [self.ev(a, mask) for a in node.args]
+            return self.call_user(max(candidates, key=lambda f: _overload_score(f, values)), node, mask, values)
         impl = _builtins.FUNCTIONS.get(name)
         if impl is None:
             raise VexError("Line %d: unknown function '%s'" % (node.line, name))
@@ -521,12 +526,12 @@ class Interpreter:
             return const('int', 0)
         return result
 
-    def call_user(self, fn, node, mask):
+    def call_user(self, fn, node, mask, values=None):
         if len(node.args) != len(fn.params):
             raise VexError("Line %d: %s() expects %d arguments" % (node.line, fn.name, len(fn.params)))
         scope = {}
-        for (pt, pname), arg in zip(fn.params, node.args):
-            v = convert(self.ev(arg, mask, hint=pt), pt)
+        for i, ((pt, pname), arg) in enumerate(zip(fn.params, node.args)):
+            v = convert(values[i] if values is not None else self.ev(arg, mask, hint=pt), pt)
             scope[pname] = V(pt, np.array(full(v, self.n), copy=True))
         saved = self.scopes
         self.scopes = [saved[0], scope]
@@ -550,6 +555,18 @@ class Interpreter:
 
 # ----------------------------------------------------------------------
 # Helpers
+
+def _overload_score(fn, values):
+    score = 0
+    for (pt, _name), v in zip(fn.params, values):
+        if v.t == pt:
+            score += 3
+        elif v.t in SCALARS and pt in SCALARS:
+            score += 1
+        elif is_array(v.t) != is_array(pt) or (v.t == 'string') != (pt == 'string'):
+            score -= 10
+    return score
+
 
 def _constants():
     """Constants from Houdini's math.h (which wrangles include by default)."""

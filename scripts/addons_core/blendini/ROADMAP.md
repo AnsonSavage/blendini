@@ -48,7 +48,8 @@ and needs a real Blender session to confirm.
 ## Later / ideas
 
 - [ ] Multi-output nodes (Split, Two Way Switch outputs)
-- [ ] VEX `struct`s, function overloading by signature, function-like macros
+- [x] VEX function overloading by signature, function-like `#define` macros
+- [ ] VEX `struct`s
 - [ ] NURBS / Bézier primitives, volumes as a native primitive type
 - [ ] Constraint networks for RBD, FLIP-style surface tension / viscosity
 - [ ] Viewport handles and tool states (Transform handle, Edit brush)

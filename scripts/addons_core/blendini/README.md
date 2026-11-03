@@ -169,7 +169,8 @@ Supported language:
   `&& || !`, and C-style or function-style casts.
 - `if/else`, `for`, `while`, `do/while`, `foreach (int i; int x; arr)`, `break`,
   `continue`, `return`.
-- User functions with VEX's **pass-by-reference** parameters, recursion and early `return`.
+- User functions with VEX's **pass-by-reference** parameters, overloading by argument types,
+  recursion and early `return`. `#define` macros, both object-like and function-like.
 - Return-type overloading from context: `vector r = rand(@ptnum);` and
   `vector n = noise(@P);` return vectors.
 

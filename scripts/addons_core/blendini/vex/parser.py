@@ -241,7 +241,7 @@ class Parser:
         while self.tok.type != 'eof':
             fn = self.try_function_def()
             if fn is not None:
-                self.functions[fn.name] = fn
+                self.functions.setdefault(fn.name, []).append(fn)
                 continue
             stmts.append(self.parse_statement())
         return Node('program', 0, body=stmts, functions=self.functions, bindings=self.bindings)
@@ -579,5 +579,66 @@ class Parser:
         raise VexSyntaxError("Unexpected %s" % (repr(t.value) if t.value is not None else 'end of code'), t.line, t.col)
 
 
+_func_macro_re = re.compile(r'^[ \t]*#[ \t]*define[ \t]+([A-Za-z_]\w*)\(([^)]*)\)[ \t]*(.*)$', re.M)
+
+
+def _split_args(text):
+    """Split a macro call's argument text on top-level commas."""
+    args, depth, cur = [], 0, []
+    for ch in text:
+        if ch in '([{':
+            depth += 1
+        elif ch in ')]}':
+            depth -= 1
+        if ch == ',' and depth == 0:
+            args.append(''.join(cur).strip())
+            cur = []
+        else:
+            cur.append(ch)
+    args.append(''.join(cur).strip())
+    return args
+
+
+def expand_function_macros(src):
+    """Expand function-like #define macros (text substitution, like the C preprocessor)."""
+    macros = {}
+
+    def collect(m):
+        params = [p.strip() for p in m.group(2).split(',') if p.strip()]
+        macros[m.group(1)] = (params, m.group(3))
+        return ''  # keep the line (empty) so line numbers stay correct
+    src = _func_macro_re.sub(collect, src)
+    if not macros:
+        return src
+    call_re = re.compile(r'\b(%s)\s*\(' % '|'.join(re.escape(k) for k in macros))
+    for _ in range(16):
+        m = call_re.search(src)
+        if m is None:
+            break
+        out = []
+        pos = 0
+        while m is not None:
+            start = m.end()
+            depth, i = 1, start
+            while i < len(src) and depth:
+                depth += {'(': 1, ')': -1}.get(src[i], 0)
+                i += 1
+            if depth:
+                raise VexSyntaxError("Unterminated call to macro %s" % m.group(1))
+            params, body = macros[m.group(1)]
+            args = _split_args(src[start:i - 1]) if src[start:i - 1].strip() else []
+            if len(args) != len(params):
+                raise VexSyntaxError("Macro %s expects %d arguments" % (m.group(1), len(params)))
+            for pname, arg in zip(params, args):
+                body = re.sub(r'\b%s\b' % re.escape(pname), '(%s)' % arg, body)
+            out.append(src[pos:m.start()])
+            out.append('(%s)' % body)
+            pos = i
+            m = call_re.search(src, pos)
+        out.append(src[pos:])
+        src = ''.join(out)
+    return src
+
+
 def parse(src):
-    return Parser(src).parse_program()
+    return Parser(expand_function_macros(src)).parse_program()

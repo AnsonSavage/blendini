@@ -311,6 +311,8 @@ TUTORIAL_SNIPPETS = {
  'detail_read': 'f@x = detail(0, "missing");',
  'dot_dot': 'f@d = dot(@N, {0,1,0});',
  'const_pi': 'f@x = sin(@P.x * M_PI);',
+ 'overload': 'float twice(float x) { return x * 2; } vector twice(vector v) { return v * 3; } f@a = twice(1.5); v@b = twice({1,1,1});',
+ 'func_macro': '#define SQ(x) ((x) * (x))\n#define LERP(a, b, t) ((a) + ((b) - (a)) * (t))\nf@s = SQ(@P.x + 1); f@l = LERP(0, 10, 0.25);',
  'const_ternary': 'v@c = 1 ? {1,0,0} : {0,0,1}; f@f = (2 > 3) ? 1.0 : 0.5;',
  'iter_vec_fe': 'vector ps[] = {{1,2,3},{4,5,6}}; vector s = 0; foreach (vector p; ps) s += p; v@s = s;',
 }
