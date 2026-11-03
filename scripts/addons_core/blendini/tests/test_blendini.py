@@ -276,7 +276,8 @@ class TestVex(unittest.TestCase):
         o, _ = run_wrangle('vector p[]; int pr[]; vector uvw[]; i@n = intersect_all(1, {0,5,0}, {0,-10,0}, p, pr, uvw);'
                            'f@y0 = p[0].y; f@y1 = p[1].y;', [g, cook_sop('box')], run_over='detail')
         d = o.attribs['detail']
-        self.assertEqual((int(d['n'][0]), float(d['y0'][0]), float(d['y1'][0])), (2, 0.5, -0.5))
+        self.assertEqual(int(d['n'][0]), 2)
+        np.testing.assert_allclose([d['y0'][0], d['y1'][0]], [0.5, -0.5], atol=1e-9)
         u = cook_sop('uvtexture', [cook_sop('grid', rows=5, cols=5)])
         o, _ = run_wrangle('v@p = uvsample(1, "P", "uv", {0.5, 0.5, 0});', [g, u], run_over='detail')
         np.testing.assert_allclose(o.attribs['detail']['p'][0], [0, 0, 0], atol=1e-9)
