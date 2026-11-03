@@ -963,6 +963,18 @@ class TestEverydaySops(unittest.TestCase):
         self.assertTrue(np.all(r[m] < 1.0) and m.sum() > 50)
         self.assertEqual(cook_sop('delete', [g, s], entity='point', mode='object').num_points, g.num_points - int(m.sum()))
 
+    def test_attrib_promote_methods(self):
+        g, _ = run_wrangle('f@w = @ptnum; s@name = "p" + itoa(@ptnum);', [cook_sop('grid', rows=3, cols=3)],
+                           run_over='point')
+
+        def prom(m, **kw):
+            return cook_sop('attribpromote', [g], names=kw.pop('names', 'w'), inclass='point', outclass='prim',
+                            method=m, deleteorig=False, **kw).attribs['prim']
+        np.testing.assert_array_equal(prom('count')['w'], [4, 4, 4, 4])
+        np.testing.assert_allclose(prom('sumsquares')['w'][0], 26.0)
+        np.testing.assert_allclose(prom('rms')['w'][0], np.sqrt(6.5))
+        self.assertEqual(list(prom('first', names='name', newname='nm')['nm']), ['p0', 'p1', 'p3', 'p4'])
+
     def test_skin(self):
         rows = Geometry.from_polys([[x, y, 0] for y in range(3) for x in range(4)],
                                    [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], closed=False)

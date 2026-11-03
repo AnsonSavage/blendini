@@ -136,23 +136,30 @@ class AttribPromoteSOP(SOP):
         Parm('outclass', "New Class", 'enum', items=[CLASS_ITEMS[1], CLASS_ITEMS[0], CLASS_ITEMS[2], CLASS_ITEMS[3]]),
         Parm('method', "Promotion Method", 'enum', items=[
             ('mean', "Average", ""), ('min', "Minimum", ""), ('max', "Maximum", ""), ('sum', "Sum", ""),
-            ('first', "First Match", ""),
+            ('first', "First Match", ""), ('last', "Last Match", ""), ('count', "Count", ""),
+            ('sumsquares', "Sum of Squares", ""), ('rms', "RMS", ""),
         ]),
+        Parm('newname', "New Name", 'string', default='', description="Optional: write the result under this name"),
         Parm('deleteorig', "Delete Original", 'bool', default=True),
     )
 
     def cook(self, inputs, p, ctx):
         geo = _in(inputs).copy()
-        for name in p.names.split():
+        names = p.names.split()
+        for name in names:
             arr = geo.attribs[p.inclass].get(name)
-            if arr is None or arr.dtype == object:
+            if arr is None:
+                continue
+            if arr.dtype == object and p.method not in ('first', 'last'):
+                ctx.warn("Attribute Promote: string attribute '%s' needs First or Last Match" % name)
                 continue
             out = promote(geo, arr, p.inclass, p.outclass, p.method)
+            target = p.newname.strip() if p.get('newname', '').strip() and len(names) == 1 else name
             if p.deleteorig and name != 'P':
                 del geo.attribs[p.inclass][name]
-            if name == 'P' and p.outclass == POINT:
+            if target == 'P' and p.outclass == POINT:
                 continue
-            geo.attribs[p.outclass][name] = out
+            geo.attribs[p.outclass][target] = out
         return geo
 
 
@@ -166,8 +173,17 @@ def promote(geo, arr, src, dst, method='mean'):
     if dst == DETAIL:
         if len(arr) == 0:
             return np.zeros((1,) + arr.shape[1:], dtype=arr.dtype)
-        fn = {'mean': np.mean, 'min': np.min, 'max': np.max, 'sum': np.sum, 'first': lambda a, axis: a[0]}[method]
-        return np.asarray(fn(arr, axis=0), dtype=np.float64 if method == 'mean' else arr.dtype)[None]
+        if method == 'count':
+            return np.array([len(arr)], dtype=np.int64)
+        if arr.dtype == object:
+            out = np.empty(1, dtype=object)
+            out[0] = arr[0] if method == 'first' else arr[-1]
+            return out
+        fn = {'mean': np.mean, 'min': np.min, 'max': np.max, 'sum': np.sum, 'first': lambda a, axis: a[0],
+              'last': lambda a, axis: a[-1], 'sumsquares': lambda a, axis: np.sum(np.square(a, dtype=np.float64), axis=0),
+              'rms': lambda a, axis: np.sqrt(np.mean(np.square(a, dtype=np.float64), axis=0))}[method]
+        floaty = method in ('mean', 'sumsquares', 'rms')
+        return np.asarray(fn(arr, axis=0), dtype=np.float64 if floaty else arr.dtype)[None]
     if src == DETAIL:
         return np.repeat(arr[:1], geo.count(dst), axis=0)
     if src == POINT:
@@ -181,6 +197,25 @@ def promote(geo, arr, src, dst, method='mean'):
     target = vpt if dst == POINT else vp
     n = geo.count(dst)
     shape = (n,) + arr.shape[1:]
+    if method == 'count':
+        return np.bincount(target, minlength=n).astype(np.int64)
+    if arr.dtype == object:
+        out = np.empty(n, dtype=object)
+        out[:] = ''
+        order = slice(None, None, -1) if method == 'first' else slice(None)
+        out[target[order]] = per_vtx[order]
+        return out
+    if method in ('sumsquares', 'rms'):
+        acc = np.zeros(shape)
+        np.add.at(acc, target, np.square(per_vtx, dtype=np.float64))
+        if method == 'rms':
+            cnt = np.bincount(target, minlength=n).reshape((-1,) + (1,) * (arr.ndim - 1))
+            acc = np.sqrt(acc / np.maximum(cnt, 1))
+        return acc
+    if method == 'last':
+        acc = np.zeros(shape, dtype=arr.dtype)
+        acc[target] = per_vtx
+        return acc
     if method in ('mean', 'sum'):
         acc = np.zeros(shape)
         np.add.at(acc, target, per_vtx)
