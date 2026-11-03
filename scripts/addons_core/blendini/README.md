@@ -181,8 +181,9 @@ expressions such as `@P.y > 0` or `@ptnum % 2 == 0`.
 The wrangle doesn't loop over points in Python. The snippet is parsed into an AST, then
 run **SIMD style**: every value is a numpy array with one lane per element. `if`/`else`,
 loops, `break`/`continue` and `return` work by masking lanes, much like a GPU, so
-typical wrangles run at numpy speed. For example, a 490k point ripple wrangle cooks in
-about 0.8 s, and 10k points with `nearpoints` and `noise` in about 0.2 s.
+typical wrangles run at numpy speed. Measured on 100k points: a ripple in 0.01 s, noise
+displacement in 0.3 s, a 20-iteration `for` loop in 0.04 s, `xyzdist` to a sphere in 0.5 s,
+and `nearpoints` (radius search through a vectorized spatial hash) in about 3 s.
 
 Supported language:
 
