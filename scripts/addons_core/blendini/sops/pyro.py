@@ -11,7 +11,7 @@ volumes (fog volumes render as smoke).
 
 import numpy as np
 
-from .base import SOP, Parm, register_sop, CookError
+from .base import SOP, Parm, register_sop, CookError, upstream_changed
 from ..core.geometry import Geometry, POINT
 from ..core.volume import Volume, winding_numbers
 from .modify import _in
@@ -286,7 +286,11 @@ class PyroSolverSOP(SOP):
             grid = self._grid(p)
         except ValueError as ex:
             raise CookError(str(ex))
-        if state.get('key') != (key, colkey) or frame <= start or 'sim' not in state:
+        sig = (src_geo.num_points, float(src_geo.P.sum()) if src_geo.num_points else 0.0,
+               sum(float(v.data.sum()) for v in src_geo.volumes),
+               float(col_geo.P.sum()) if col_geo is not None and col_geo.num_points else 0.0)
+        edited = state.get('key') == (key, colkey) and upstream_changed(state, frame, sig)
+        if state.get('key') != (key, colkey) or frame <= start or 'sim' not in state or edited:
             state.clear()
             state['key'] = (key, colkey)
             res = tuple(grid.res)
