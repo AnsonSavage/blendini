@@ -25,7 +25,7 @@ and needs a real Blender session to confirm.
 - [x] Attribute VOP (visual VEX network that generates code)
 - [x] Driver expressions on parameters evaluated through VEX (`#frame * 0.1`), keyframes
 
-### SOPs (156)
+### SOPs (158)
 - [x] Primitives, manipulation, polygon, attribute, group, copy/instancing, terrain, utility,
       Blender-backed (modifiers, bmesh, BVH, Bullet, OpenVDB) — see README for the full list
 - [x] Simulations: Solver (VEX), Vellum-style cloth (PBD), RBD (Bullet), FLIP and PBF liquids + meshing, Pyro smoke and fire
@@ -36,7 +36,8 @@ and needs a real Blender session to confirm.
 - [x] Everyday additions: Enumerate, Group by Range, Switch-If, Revolve, Skin, Path Deform,
       Distance from Geometry, Lattice, UV Transform, UV Layout, Attribute Adjust Float / Vector,
       Extract Centroid, Group from Attribute Boundary, Calculate Occlusion, Blend Shapes, Exploded View,
-      PolyCap, Point Replicate, Group Transfer, Soft Transform, Magnet, Instance (s@instance)
+      PolyCap, Point Replicate, Group Transfer, Soft Transform, Magnet, Instance (s@instance),
+      Extract Transform, Transform Pieces
 
 ### Look and feel
 - [x] TAB menu with auto-wiring, display/template/bypass flags (buttons, hotkeys, edge bars)

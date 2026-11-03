@@ -1318,3 +1318,101 @@ class MagnetSOP(SOP):
                 disp += w[:, None] * d * p.amount
         geo.P = P + disp
         return geo
+
+
+def _kabsch(A, B):
+    """Best rotation R and translation t with B ~ A @ R.T + t (A, B: (n, 3) matching points)."""
+    ca, cb = A.mean(axis=0), B.mean(axis=0)
+    H = (A - ca).T @ (B - cb)
+    U, _S, Vt = np.linalg.svd(H)
+    d = np.sign(np.linalg.det(Vt.T @ U.T)) or 1.0
+    D = np.diag([1.0, 1.0, d])
+    R = Vt.T @ D @ U.T
+    return R, cb - ca @ R.T
+
+
+@register_sop
+class ExtractTransformSOP(SOP):
+    id = 'extracttransform'
+    label = "Extract Transform"
+    category = 'Copy'
+    inputs = 2
+    input_labels = ("Rest Pieces", "Deformed Pieces")
+    icon = 'ORIENTATION_GIMBAL'
+    description = ("One point per piece holding the rigid transform (P, orient, pivot) that moves the rest "
+                   "piece onto the deformed one; pieces are matched by name, with equal point counts")
+    parms = (
+        Parm('pieceattrib', "Piece Attribute", 'string', default='name'),
+    )
+
+    def cook(self, inputs, p, ctx):
+        from ..core.instances import matrix_to_quat
+        rest, deformed = _in(inputs, 0), _in(inputs, 1)
+        attrib = p.pieceattrib.strip() or 'name'
+        rp = split_pieces(rest, attrib) if rest.num_prims else []
+        dp = split_pieces(deformed, attrib) if deformed.num_prims else []
+        rn, dn = piece_names(rp, attrib), piece_names(dp, attrib)
+        dmap = dict(zip(dn, dp))
+        P, Q, piv, names = [], [], [], []
+        for nm, a in zip(rn, rp):
+            b = dmap.get(nm)
+            if b is None or b.num_points != a.num_points or a.num_points == 0:
+                continue
+            R, t = _kabsch(a.P, b.P)
+            c = a.P.mean(axis=0)
+            P.append(c @ R.T + t)
+            Q.append(R)
+            piv.append(c)
+            names.append(nm)
+        out = Geometry()
+        if not names:
+            ctx.warn("Extract Transform: no pieces matched by '%s' with the same point counts" % attrib)
+            return out
+        out.P = np.array(P)
+        out.attribs[POINT]['orient'] = matrix_to_quat(np.array(Q))
+        out.attribs[POINT]['pivot'] = np.array(piv)
+        out.attribs[POINT][attrib] = np.array(names, dtype=object)
+        return out
+
+
+@register_sop
+class TransformPiecesSOP(SOP):
+    id = 'transformpieces'
+    label = "Transform Pieces"
+    category = 'Copy'
+    inputs = 2
+    input_labels = ("Pieces", "Transform Points (P, orient, pivot, name)")
+    icon = 'OBJECT_ORIGIN'
+    description = "Move each named piece by the matching point's transform (e.g. from Extract Transform or an RBD sim)"
+    parms = (
+        Parm('pieceattrib', "Piece Attribute", 'string', default='name'),
+    )
+
+    def cook(self, inputs, p, ctx):
+        from ..core.geometry import merge
+        from ..core.instances import quat_to_matrix
+        geo, xf = _in(inputs, 0), _in(inputs, 1)
+        attrib = p.pieceattrib.strip() or 'name'
+        if geo.num_prims == 0 or xf.num_points == 0:
+            return geo.copy()
+        names = xf.attribs[POINT].get(attrib)
+        if names is None:
+            raise CookError("Transform Pieces: the transform points need a '%s' attribute" % attrib)
+        q = xf.attribs[POINT].get('orient')
+        R = quat_to_matrix(np.asarray(q, dtype=np.float64)) if q is not None else np.broadcast_to(np.eye(3), (xf.num_points, 3, 3))
+        pv = xf.attribs[POINT].get('pivot')
+        pieces = split_pieces(geo, attrib)
+        pnames = piece_names(pieces, attrib)
+        lookup = {str(n): i for i, n in enumerate(names.tolist())}
+        out = []
+        for nm, pc in zip(pnames, pieces):
+            i = lookup.get(nm)
+            g = pc.copy()
+            if i is not None:
+                c = pv[i] if pv is not None else g.P.mean(axis=0)
+                g.P = (g.P - c) @ R[i].T + xf.P[i]
+                for vec in ('N', 'v'):
+                    if vec in g.attribs[POINT] and g.attribs[POINT][vec].ndim == 2:
+                        g.attribs[POINT][vec] = g.attribs[POINT][vec] @ R[i].T
+            out.append(g)
+        return merge(out)

@@ -862,6 +862,17 @@ class TestEverydaySops(unittest.TestCase):
         self.assertLessEqual(diag, 0.5 * np.sqrt(3) * 1.4143)          # scaled to 0.5 (any rotation)
         self.assertGreater(diag, 0.5)
 
+    def test_extract_and_transform_pieces(self):
+        from blendini.sops.modify import split_pieces
+        rest = cook_sop('name', [merge([cook_sop('box', t=(i * 2.0, 0, 0)) for i in range(3)])])
+        moved = [cook_sop('xform', [pc], r=(10 * i, 30 * i, 0), t=(0, i, 0), p=tuple(pc.P.mean(axis=0)))
+                 for i, pc in enumerate(split_pieces(rest, 'name'))]
+        deformed = merge(moved)
+        xf = cook_sop('extracttransform', [rest, deformed])
+        self.assertEqual(xf.num_points, 3)
+        back = cook_sop('transformpieces', [rest, xf])
+        np.testing.assert_allclose(back.P, deformed.P, atol=1e-9)
+
     def test_skin(self):
         rows = Geometry.from_polys([[x, y, 0] for y in range(3) for x in range(4)],
                                    [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], closed=False)
