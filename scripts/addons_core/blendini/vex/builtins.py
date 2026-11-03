@@ -1623,29 +1623,9 @@ def _prim_weights(geo, prim, uv):
 
 
 def _solve_uv(geo, prim, loc):
-    uv = np.zeros((len(prim), 3))
-    for i, (p, x) in enumerate(zip(prim.tolist(), loc)):
-        if p < 0:
-            continue
-        pts = geo.prim_points(p)
-        Q = geo.P[pts]
-        if len(pts) == 3:
-            A = np.stack([Q[1] - Q[0], Q[2] - Q[0]], axis=1)
-            sol, *_ = np.linalg.lstsq(A, x - Q[0], rcond=None)
-            uv[i, :2] = sol
-        elif len(pts) == 4:
-            u = v = 0.5
-            for _ in range(8):
-                Pp = (1 - u) * (1 - v) * Q[0] + u * (1 - v) * Q[1] + u * v * Q[2] + (1 - u) * v * Q[3]
-                du = -(1 - v) * Q[0] + (1 - v) * Q[1] + v * Q[2] - v * Q[3]
-                dv = -(1 - u) * Q[0] - u * Q[1] + u * Q[2] + (1 - u) * Q[3]
-                J = np.stack([du, dv], axis=1)
-                step, *_ = np.linalg.lstsq(J, x - Pp, rcond=None)
-                u, v = u + step[0], v + step[1]
-                if abs(step[0]) + abs(step[1]) < 1e-9:
-                    break
-            uv[i, :2] = (u, v)
-    return uv
+    """Parametric uv of the closest locations (vectorized: triangles and quads)."""
+    from ..core.primuv import prim_uv
+    return prim_uv(geo, prim, loc)
 
 
 @builtin('xyzdist')
