@@ -6,7 +6,7 @@
 
 import numpy as np
 
-from .base import SOP, Parm, register_sop, parse_group_pattern
+from .base import SOP, Parm, register_sop, upstream_changed, parse_group_pattern
 from ..core.geometry import Geometry, POINT
 
 
@@ -199,10 +199,10 @@ class VellumSOP(SOP):
         frame = int(round(ctx.frame))
         start = int(p.startframe)
         key = (tuple(sorted((k, v if not isinstance(v, list) else tuple(v)) for k, v in p.items())),
-               geo.num_points, geo.num_prims, float(geo.P.sum()) if geo.num_points else 0.0,
-               # Collider topology only: animated colliders move without restarting the simulation.
-               col_geo.num_points, col_geo.num_prims)
-        if state.get('key') != key or frame <= start or 'sim' not in state:
+               geo.num_points, geo.num_prims, col_geo.num_points, col_geo.num_prims)
+        sig = (float(geo.P.sum()) if geo.num_points else 0.0, float(col_geo.P.sum()) if col_geo.num_points else 0.0)
+        edited = state.get('key') == key and upstream_changed(state, frame, sig)
+        if state.get('key') != key or frame <= start or 'sim' not in state or edited:
             state.clear()
             state['key'] = key
             E = geo.edges()
@@ -244,6 +244,9 @@ class VellumSOP(SOP):
             return self.cook(inputs, p, ctx)
         collider = _Collider(col_geo)
         sim = state['sim']
+        if sim['pinned'].any() and geo.num_points == len(sim['P']):
+            # Pins follow the (possibly animated) input.
+            sim['pin_pos'] = geo.P[sim['pinned']].copy()
         sub = max(int(p.substeps), 1)
         dt = 1.0 / ctx.fps / sub
         for f in range(state['last'] + 1, frame + 1):

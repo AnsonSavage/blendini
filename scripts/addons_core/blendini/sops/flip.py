@@ -11,7 +11,7 @@ pass that keeps the particle spacing (volume) stable.
 
 import numpy as np
 
-from .base import SOP, Parm, register_sop, CookError
+from .base import SOP, Parm, register_sop, CookError, upstream_changed
 from ..core.geometry import Geometry, POINT
 from .fluid import neighbour_pairs
 from .modify import _in
@@ -153,9 +153,11 @@ class FLIPSolverSOP(SOP):
         frame = int(round(ctx.frame))
         start = int(p.startframe)
         key = (tuple(sorted((k, tuple(v) if isinstance(v, (list, tuple)) else v) for k, v in p.items())),
-               geo.num_points, float(geo.P.sum()) if geo.num_points else 0.0,
-               (col.num_points, col.num_prims) if col is not None and col.num_points else None)
-        if state.get('key') != key or frame <= start or 'sim' not in state:
+               geo.num_points, (col.num_points, col.num_prims) if col is not None and col.num_points else None)
+        sig = (float(geo.P.sum()) if geo.num_points else 0.0,
+               float(col.P.sum()) if col is not None and col.num_points else 0.0)
+        edited = state.get('key') == key and upstream_changed(state, frame, sig)
+        if state.get('key') != key or frame <= start or 'sim' not in state or edited:
             state.clear()
             state['key'] = key
             lo = np.asarray(p.boxmin, dtype=np.float64)

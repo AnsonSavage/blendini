@@ -241,3 +241,15 @@ def orient_matrices(geo):
         m[zl[:, 0] == 0] = np.eye(3)
         return m
     return np.broadcast_to(np.eye(3), (n, 3, 3)).copy()
+
+
+def upstream_changed(state, frame, sig):
+    """Simulation helper: True when the inputs differ from what this frame saw before (an upstream
+    edit, so the simulation must restart). New frames just record their signature, so animated
+    inputs (moving colliders, animated pins) don't reset anything."""
+    seen = state.setdefault('input_sigs', {})
+    if frame in seen and seen[frame] != sig:
+        return True
+    seen[frame] = sig
+    return False
+

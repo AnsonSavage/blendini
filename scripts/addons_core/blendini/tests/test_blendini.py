@@ -917,6 +917,24 @@ class TestEverydaySops(unittest.TestCase):
         self.assertEqual(len(st['frames']), 8)
         self.assertLess(out.P[:, 1].mean(), 0.95)
 
+    def test_vellum_animated_pins_and_upstream_edits(self):
+        from blendini.sops import REGISTRY, default_parms, CookContext
+        p = default_parms('vellum')
+        p.update(pingroup='@P.x < -0.85', ground=False)
+        st = {}
+
+        def cloth(f, y=1.0):
+            return cook_sop('xform', [cook_sop('grid', rows=6, cols=6, size=(2.0, 2.0))], t=(0.1 * f, y, 0), r=(90, 0, 0))
+        for f in range(1, 9):
+            out = REGISTRY['vellum'].cook([cloth(f)], p, CookContext(frame=f, time=(f - 1) / 24, state=st))
+        pins = st['sim']['pinned']
+        np.testing.assert_allclose(out.P[pins], cloth(8).P[pins])      # pins follow the animation
+        sim = id(st['sim'])
+        REGISTRY['vellum'].cook([cloth(8)], p, CookContext(frame=8, time=7 / 24, state=st))
+        self.assertEqual(id(st['sim']), sim)
+        REGISTRY['vellum'].cook([cloth(8, y=1.5)], p, CookContext(frame=8, time=7 / 24, state=st))
+        self.assertNotEqual(id(st['sim']), sim)                         # upstream edit restarts
+
     def test_skin(self):
         rows = Geometry.from_polys([[x, y, 0] for y in range(3) for x in range(4)],
                                    [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], closed=False)
