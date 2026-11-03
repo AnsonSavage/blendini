@@ -63,7 +63,7 @@ and needs a real Blender session to confirm.
 - [x] Multi-output nodes (cook engine reads the linked output) with the Split SOP
 - [x] VEX function overloading by signature, function-like `#define` macros
 - [x] VEX `struct`s (defaults, constructors, members, function parameters / returns)
-- [ ] Arrays of structs, struct methods
+- [x] Arrays of structs, struct methods (`obj->method()`, members visible inside methods)
 - [x] Curve SOP (polygon, Catmull-Rom, Bézier — evaluated to polylines)
 - [ ] Native NURBS / Bézier primitives, volumes as a native primitive type
 - [x] RBD glue constraints (breakable FIXED constraints between neighbouring pieces)

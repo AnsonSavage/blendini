@@ -70,7 +70,19 @@ class Interpreter:
 
     # -- structs (one SIMD value per field)
 
+    def is_struct(self, t):
+        """Struct or array of structs (stored as one array per member)."""
+        return t in self.structs or (t.endswith('[]') and t[:-2] in self.structs)
+
     def zeros(self, t):
+        if is_array(t) and elem_type(t) in self.structs:
+            fields = {}
+            for ft, fname, _default in self.structs[elem_type(t)]:
+                if is_array(ft):
+                    raise VexError("Arrays of structs with array members (%s.%s) are not supported"
+                                   % (elem_type(t), fname))
+                fields[fname] = self.zeros(ft + '[]')
+            return V(t, fields)
         if t in self.structs:
             fields = {}
             for ft, fname, default in self.structs[t]:
@@ -83,22 +95,86 @@ class Interpreter:
         return zeros(t, self.n)
 
     def copy_full(self, v):
-        if v.t in self.structs:
+        if self.is_struct(v.t):
             return V(v.t, {f: self.copy_full(fv) for f, fv in v.d.items()})
         return V(v.t, np.array(full(v, self.n), copy=True))
 
     def merge(self, mask, new, old):
         """Masked select between two values of the same type."""
-        if new.t in self.structs:
+        if self.is_struct(new.t):
             return V(new.t, {f: self.merge(mask, new.d[f], old.d[f]) for f in new.d})
         return V(old.t, mwhere(mask, new.d, old.d))
 
     def to_type(self, v, t):
-        if t in self.structs or v.t in self.structs:
+        if self.is_struct(t) or self.is_struct(v.t):
             if v.t != t:
                 raise VexError("Can't convert %s to %s" % (v.t, t))
             return v
         return convert(v, t)
+
+    def sa_len(self, v):
+        """Per-lane lengths of an array of structs."""
+        for fv in v.d.values():
+            if self.is_struct(fv.t):
+                return self.sa_len(fv)
+            return np.array([len(x) for x in full(fv, self.n)], dtype=np.int64)
+        return np.zeros(self.n, dtype=np.int64)
+
+    def sa_get(self, v, idx, mask):
+        """Element idx (per lane) of an array of structs."""
+        out = {}
+        for f, fv in v.d.items():
+            if self.is_struct(fv.t):
+                out[f] = self.sa_get(fv, idx, mask)
+            else:
+                out[f] = _gather_array_elem(full(fv, self.n), idx, elem_type(fv.t), mask)
+        return V(elem_type(v.t), out)
+
+    def set_elem(self, base, i, value, mask):
+        """Copy of array base with element i (per lane) set to value where mask."""
+        if self.is_struct(base.t):
+            value = self.to_type(value, elem_type(base.t))
+            return V(base.t, {f: self.set_elem(fv, i, value.d[f], mask) for f, fv in base.d.items()})
+        et = elem_type(base.t)
+        src = full(convert(value, et), self.n)
+        d = np.array(full(base, self.n), dtype=object, copy=True)
+        for j in np.nonzero(mask)[0]:
+            arr = d[j]
+            ii = int(i[j])
+            if et == 'string':
+                arr = list(arr)
+                if ii < 0:
+                    ii += len(arr)
+                while len(arr) <= ii:
+                    arr.append('')
+                arr[ii] = src[j]
+            else:
+                arr = np.array(arr, copy=True)
+                if ii < 0:
+                    ii += len(arr)
+                if ii >= len(arr):
+                    grow = np.zeros((ii + 1 - len(arr),) + arr.shape[1:], dtype=arr.dtype)
+                    arr = np.concatenate([arr, grow])
+                arr[ii] = src[j]
+            d[j] = arr
+        return V(base.t, d)
+
+    def sa_call(self, name, arr, extra, mask, hint):
+        """Array builtins (push, pop, insert ...) on an array of structs: applied member by member.
+        Returns (new array, result)."""
+        impl = _builtins.FUNCTIONS[name]
+        new_fields, results = {}, {}
+        for f, fv in arr.d.items():
+            fextra = [x.d[f] if self.is_struct(x.t) else x for x in extra]
+            if self.is_struct(fv.t):
+                new_fields[f], results[f] = self.sa_call(name, fv, fextra, mask, hint)
+            elif name in _builtins.INPLACE:
+                new_fields[f], results[f] = impl(self, [fv] + fextra, mask, hint)
+            else:
+                new_fields[f], results[f] = impl(self, [fv] + fextra, mask, hint), None
+        first = next(iter(results.values()), None) if results else None
+        result = V(elem_type(arr.t), results) if first is not None else None
+        return V(arr.t, new_fields), result
 
     def construct(self, t, args, line=0):
         fields = self.structs[t]
@@ -111,7 +187,7 @@ class Interpreter:
 
     def declare(self, t, name, value, mask):
         scope = self.scopes[-1]
-        if t in self.structs:
+        if self.is_struct(t):
             value = self.zeros(t) if value is None else self.copy_full(self.to_type(value, t))
             old = scope.get(name)
             scope[name] = self.merge(mask, value, old) if old is not None and old.t == t else value
@@ -242,8 +318,12 @@ class Interpreter:
             raise VexError("foreach needs an array")
         et = elem_type(arr.t)
         vt = node.vtype or et
-        data = full(arr, self.n)
-        lengths = np.array([len(x) for x in data], dtype=np.int64)
+        if self.is_struct(arr.t):
+            data = None
+            lengths = self.sa_len(arr)
+        else:
+            data = full(arr, self.n)
+            lengths = np.array([len(x) for x in data], dtype=np.int64)
         maxlen = int(lengths[mask].max()) if mask.any() else 0
         self.scopes.append({})
         try:
@@ -254,7 +334,10 @@ class Interpreter:
                 active &= lengths > i
                 if not active.any():
                     break
-                elem = _gather_array_elem(data, np.full(self.n, i), et, active)
+                if data is None:
+                    elem = self.sa_get(arr, np.full(self.n, i), active)
+                else:
+                    elem = _gather_array_elem(data, np.full(self.n, i), et, active)
                 self.declare(vt, node.var, elem, np.ones(self.n, dtype=bool))
                 if node.index:
                     self.declare('int', node.index, V('int', np.full(self.n, i, dtype=np.int64)), np.ones(self.n, dtype=bool))
@@ -328,6 +411,8 @@ class Interpreter:
         if k == 'index':
             v = self.ev(node.x, mask)
             i = convert(self.ev(node.i, mask), 'int')
+            if self.is_struct(v.t):
+                return self.sa_get(v, full(i, self.n), mask)
             if is_array(v.t):
                 return _gather_array_elem(full(v, self.n), full(i, self.n), elem_type(v.t), mask)
             if v.t in VECTORS:
@@ -355,6 +440,8 @@ class Interpreter:
             return self.brace(node, mask, hint)
         if k == 'call':
             return self.call(node, mask, hint)
+        if k == 'methodcall':
+            return self.method_call(node, mask)
         if k == 'seq':
             v = None
             for item in node.items:
@@ -366,6 +453,12 @@ class Interpreter:
         items = [self.ev(x, mask) for x in node.items]
         if hint in self.structs:
             return self.construct(hint, items, node.line)
+        if hint and is_array(hint) and elem_type(hint) in self.structs:
+            arr = self.zeros(hint)
+            ones = np.ones(self.n, dtype=bool)
+            for k, item in enumerate(items):
+                arr = self.set_elem(arr, np.full(self.n, k), item, ones)
+            return arr
         if hint and is_array(hint):
             et = elem_type(hint)
             return _make_array(et, [convert(x, et) for x in items], self.n)
@@ -472,7 +565,7 @@ class Interpreter:
                 if old_field is None:
                     raise VexError("Line %d: %s has no member '%s'" % (target.line, base.t, target.name))
                 fields[target.name] = self.merge(mask, self.to_type(value, old_field.t)
-                                                 if old_field.t in self.structs else
+                                                 if self.is_struct(old_field.t) else
                                                  V(old_field.t, convert(value, old_field.t).d), old_field)
                 self.store(target.x, V(base.t, fields), mask)
                 return
@@ -490,29 +583,7 @@ class Interpreter:
             base = self.ev(target.x, mask)
             i = full(convert(self.ev(target.i, mask), 'int'), self.n)
             if is_array(base.t):
-                et = elem_type(base.t)
-                src = full(convert(value, et), self.n)
-                d = np.array(full(base, self.n), dtype=object, copy=True)
-                for j in np.nonzero(mask)[0]:
-                    arr = d[j]
-                    ii = int(i[j])
-                    if et == 'string':
-                        arr = list(arr)
-                        if ii < 0:
-                            ii += len(arr)
-                        while len(arr) <= ii:
-                            arr.append('')
-                        arr[ii] = src[j]
-                    else:
-                        arr = np.array(arr, copy=True)
-                        if ii < 0:
-                            ii += len(arr)
-                        if ii >= len(arr):
-                            grow = np.zeros((ii + 1 - len(arr),) + arr.shape[1:], dtype=arr.dtype)
-                            arr = np.concatenate([arr, grow])
-                        arr[ii] = src[j]
-                    d[j] = arr
-                self.store(target.x, V(base.t, d), mask)
+                self.store(target.x, self.set_elem(base, i, value, mask), mask)
                 return
             if base.t in VECTORS:
                 k2 = VECTORS[base.t]
@@ -576,6 +647,8 @@ class Interpreter:
         if impl is None:
             raise VexError("Line %d: unknown function '%s'" % (node.line, name))
         args = [self.ev(a, mask) for a in node.args]
+        if args and args[0].t.endswith('[]') and self.is_struct(args[0].t):
+            return self.struct_array_builtin(name, node, args, mask, hint)
         try:
             result = impl(self, args, mask, hint)
         except IndexError:
@@ -595,6 +668,38 @@ class Interpreter:
         if result is None:
             return const('int', 0)
         return result
+
+    def struct_array_builtin(self, name, node, args, mask, hint):
+        arr = args[0]
+        if name == 'len':
+            return V('int', self.sa_len(arr))
+        if name in ('isvalidindex',):
+            i = full(convert(args[1], 'int'), self.n)
+            ln = self.sa_len(arr)
+            return V('int', ((i >= -ln) & (i < ln)).astype(np.int64))
+        if name not in ('push', 'append', 'pop', 'removeindex', 'resize', 'insert', 'reverse'):
+            raise VexError("Line %d: %s() doesn't work on arrays of structs" % (node.line, name))
+        if name == 'insert':
+            args = [arr, args[1], self.to_type(args[2], elem_type(arr.t))]
+        elif name in ('push', 'append') and not args[1].t.endswith('[]'):
+            args = [arr, self.to_type(args[1], elem_type(arr.t))]
+        new, result = self.sa_call(name, arr, args[1:], mask, hint)
+        if name == 'reverse':
+            return new
+        self.store(node.args[0], new, mask)
+        return result if result is not None else const('int', 0)
+
+    def method_call(self, node, mask):
+        obj = self.ev(node.obj, mask)
+        fns = self.functions.get('%s->%s' % (obj.t, node.name))
+        if not fns:
+            raise VexError("Line %d: %s has no method '%s'" % (node.line, obj.t, node.name))
+        call = type(node)('call', node.line, name=node.name, args=[node.obj] + list(node.args))
+        candidates = [f for f in fns if len(f.params) == len(call.args)] or fns
+        if len(candidates) == 1:
+            return self.call_user(candidates[0], call, mask)
+        values = [obj] + [self.ev(a, mask) for a in node.args]
+        return self.call_user(max(candidates, key=lambda f: _overload_score(f, values)), call, mask, values)
 
     def call_user(self, fn, node, mask, values=None):
         if len(node.args) != len(fn.params):

@@ -170,6 +170,41 @@ class TestVex(unittest.TestCase):
         np.testing.assert_array_equal(out.attribs['point']['m'], np.where(np.arange(g.num_points) % 2 == 0, 10.0, 2.0))
         self.assertTrue(np.all(out.attribs['point']['dv'] == 5) and np.all(out.attribs['point']['dm'] == 3))
 
+    def test_struct_arrays_and_methods(self):
+        code = """
+        struct Inner { float w = 1; }
+        struct Hit {
+            int prim; Inner in;
+            float score() { return in.w * 2; }
+            void bump(float k) { in.w += k; }
+        }
+        Hit hits[];
+        for (int i = 0; i < @ptnum; i++) {
+            Hit h; h.prim = i; h.in.w = i * 10;
+            if (i % 2 == 0) push(hits, h);
+        }
+        i@n = len(hits);
+        float s = 0;
+        foreach (int k; Hit h; hits) s += h->score() + k;
+        f@s = s;
+        if (len(hits) > 0) hits[0]->bump(7);
+        f@w0 = len(hits) > 0 ? hits[0].in.w : -1;
+        Hit last = pop(hits);
+        i@lastprim = last.prim;
+        Hit lit[] = { Hit(3), Hit(4) };
+        insert(lit, 0, Hit(9));
+        i@lit = lit[0].prim * 100 + len(lit);
+        """
+        out, msgs = _wrangle(code, _grid(3))
+        pa = out.attribs['point']
+        pt = np.arange(9)
+        evens = [[i for i in range(p) if i % 2 == 0] for p in pt]
+        np.testing.assert_array_equal(pa['n'], [len(e) for e in evens])
+        np.testing.assert_allclose(pa['s'], [sum(20 * i + k for k, i in enumerate(e)) for e in evens])
+        np.testing.assert_allclose(pa['w0'], np.where(pt > 0, 7.0, -1.0))
+        np.testing.assert_array_equal(pa['lastprim'], [e[-1] if e else 0 for e in evens])
+        self.assertTrue(np.all(pa['lit'] == 903))
+
     def test_strings(self):
         out, msgs = _wrangle('s@name = sprintf("piece%d", @ptnum); printf("%s\\n", s@name);')
         self.assertEqual(out.attribs['point']['name'][3], 'piece3')

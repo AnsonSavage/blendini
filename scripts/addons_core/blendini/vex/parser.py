@@ -66,7 +66,7 @@ class Tok:
 _OPS = sorted([
     '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '==', '!=', '<=', '>=', '&&', '||', '++', '--',
     '<<', '>>', '+', '-', '*', '/', '%', '=', '<', '>', '!', '?', ':', ';', ',', '.', '(', ')', '[', ']',
-    '{', '}', '&', '|', '^', '~',
+    '{', '}', '&', '|', '^', '~', '->',
 ], key=len, reverse=True)
 
 _num_re = re.compile(r'(\d+\.\d*|\.\d+|\d+)([eE][+-]?\d+)?[fF]?')
@@ -185,6 +185,44 @@ _BINARY_PREC = [
 ]
 
 
+def _bind_this(node, members, methods, declared=None):
+    """Rewrite member names / sibling method calls inside a struct method to go through 'this'."""
+    declared = set() if declared is None else declared
+    if isinstance(node, list):
+        for x in node:
+            _bind_this(x, members, methods, declared)
+        return
+    if not isinstance(node, Node):
+        return
+    if node.kind == 'decl':
+        for _t, name, init in node.decls:
+            if init is not None:
+                _bind_this(init, members, methods, declared)
+            declared.add(name)
+        return
+    for key, val in list(node.a.items()):
+        if isinstance(val, Node):
+            if val.kind == 'var' and val.name in members and val.name not in declared:
+                node.a[key] = Node('member', val.line, x=Node('var', val.line, name='this'), name=val.name)
+                continue
+            if val.kind == 'call' and val.name in methods:
+                node.a[key] = Node('methodcall', val.line, obj=Node('var', val.line, name='this'), name=val.name,
+                                   args=val.args)
+            _bind_this(node.a[key], members, methods, declared)
+        elif isinstance(val, list):
+            for i, item in enumerate(val):
+                if isinstance(item, Node):
+                    if item.kind == 'var' and item.name in members and item.name not in declared:
+                        val[i] = Node('member', item.line, x=Node('var', item.line, name='this'), name=item.name)
+                        continue
+                    if item.kind == 'call' and item.name in methods:
+                        val[i] = Node('methodcall', item.line, obj=Node('var', item.line, name='this'),
+                                      name=item.name, args=item.args)
+                    _bind_this(val[i], members, methods, declared)
+                elif isinstance(item, (list, tuple)):
+                    _bind_this([x for x in item if isinstance(x, Node)], members, methods, declared)
+
+
 class Parser:
     def __init__(self, src):
         self.toks = tokenize(src)
@@ -256,20 +294,39 @@ class Parser:
         if name in TYPE_NAMES:
             raise VexSyntaxError("Can't redefine type '%s'" % name, line)
         self.structs[name] = fields = []
+        methods = []
         self.expect('{')
         while not self.is_op('}'):
+            fn = self.try_function_def()
+            if fn is not None:
+                methods.append(fn)
+                continue
             if not self.is_type():
                 raise VexSyntaxError("Expected a member type in struct %s" % name, self.tok.line, self.tok.col)
             ftype = self.next().value
             while True:
                 fname = self.expect_ident()
+                t = ftype
+                if self.accept('['):
+                    self.expect(']')
+                    t = ftype + '[]'
                 default = self.parse_assign() if self.accept('=') else None
-                fields.append((ftype, fname, default))
+                fields.append((t, fname, default))
                 if not self.accept(','):
                     break
             self.expect(';')
         self.expect('}')
         self.accept(';')
+        # Methods are functions with an implicit 'this' passed by reference; bare member names
+        # and calls to sibling methods inside them refer to 'this'.
+        member_names = {f[1] for f in fields}
+        method_names = {m.name for m in methods}
+        for m in methods:
+            hidden = {pname for _t, pname in m.params}
+            _bind_this(m.body, member_names - hidden, method_names)
+            m.a['params'] = [(name, 'this')] + list(m.params)
+            m.a['method_of'] = name
+            self.functions.setdefault(name + '->' + m.name, []).append(m)
 
     def try_function_def(self):
         start = self.pos
@@ -530,6 +587,10 @@ class Parser:
                 self.next()
                 name = self.expect_ident()
                 e = Node('member', t.line, x=e, name=name)
+            elif self.is_op('->'):
+                self.next()
+                name = self.expect_ident()
+                e = Node('methodcall', t.line, obj=e, name=name, args=self.parse_args())
             elif t.type == 'op' and t.value in ('++', '--'):
                 self.next()
                 e = Node('incdec', t.line, op=t.value, target=e, post=True)

@@ -163,7 +163,8 @@ about 0.8 s, and 10k points with `nearpoints` and `noise` in about 0.2 s.
 Supported language:
 
 - Types: `int float vector2 vector vector4 matrix2 matrix3 matrix string`, arrays (`int[]` …) and
-  `struct`s (member defaults, constructors, passing to and returning from functions).
+  `struct`s (member defaults, constructors, passing to and returning from functions, methods
+  called with `obj->method()`, arrays of structs with `push` / `pop` / `insert` / `foreach`).
 - `@` bindings with prefixes (`f@ i@ v@ p@ u@ s@ 2@ 3@ 4@ i[]@` …) and known names
   (`@P @N @Cd @v @orient @pscale @id @name` …).
 - `@ptnum @primnum @numpt @numprim @elemnum @numelem @Time @Frame @TimeInc`,
@@ -266,6 +267,6 @@ there is no Python SOP.
 
 ## Not done yet (ideas)
 
-NURBS and Bézier primitives, volumes/VDB, a full DOP context (constraints, FLIP meshing, Pyro), more VOP types, VEX `struct`s
-and function-like macros, viewport handles/states, and a multi-line code editor inside the parameter
+NURBS and Bézier primitives, volumes/VDB, a full DOP context (constraints, FLIP meshing, Pyro), more VOP types, more viewport
+handles/states, and a multi-line code editor inside the parameter
 pane. Today the code is edited in Blender's Text Editor, which recooks live.
