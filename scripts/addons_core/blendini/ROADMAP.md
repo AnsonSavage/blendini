@@ -31,7 +31,7 @@ and needs a real Blender session to confirm.
 - [x] Primitives, manipulation, polygon, attribute, group, copy/instancing, terrain, utility,
       Blender-backed (modifiers, bmesh, BVH, Bullet, OpenVDB) — see README for the full list
 - [x] Simulations: Solver (VEX), Vellum-style cloth (PBD), RBD (Bullet), FLIP and PBF liquids + meshing, Pyro smoke and fire,
-      Vellum hair and pressure (balloons)
+      Vellum hair and pressure (balloons); animated colliders (Vellum, FLIP, Pyro) don't restart sims
 - [x] For-Each (pieces, feedback, count), Subnetworks, Time Shift, Edit (hand edits), Bake,
       File Cache (lossless .npz per frame, Save to Disk / Load from Disk), Material (material slots
       from shop_materialpath)

@@ -154,7 +154,7 @@ class FLIPSolverSOP(SOP):
         start = int(p.startframe)
         key = (tuple(sorted((k, tuple(v) if isinstance(v, (list, tuple)) else v) for k, v in p.items())),
                geo.num_points, float(geo.P.sum()) if geo.num_points else 0.0,
-               (col.num_points, float(col.P.sum())) if col is not None and col.num_points else None)
+               (col.num_points, col.num_prims) if col is not None and col.num_points else None)
         if state.get('key') != key or frame <= start or 'sim' not in state:
             state.clear()
             state['key'] = key
@@ -185,6 +185,12 @@ class FLIPSolverSOP(SOP):
                 state.clear()
                 return self.cook(inputs, p, ctx)
             st = state['sim']
+            if col is not None and col.num_prims:
+                colsig = float(col.P.sum())
+                if st.get('colsig') != colsig:
+                    # Animated collider: follow its current position.
+                    st['collider'] = _Collider(col)
+                    st['colsig'] = colsig
             frame_dt = 1.0 / ctx.fps
             for f in range(state['last'] + 1, frame + 1):
                 t = 0.0

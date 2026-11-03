@@ -280,7 +280,8 @@ class PyroSolverSOP(SOP):
         frame = int(round(ctx.frame))
         start = int(p.startframe)
         key = tuple(sorted((k, tuple(v) if isinstance(v, (list, tuple)) else v) for k, v in p.items()))
-        colkey = (col_geo.num_points, float(col_geo.P.sum())) if col_geo is not None and col_geo.num_points else None
+        # Collider topology only: animated colliders move without restarting the simulation.
+        colkey = (col_geo.num_points, col_geo.num_prims) if col_geo is not None and col_geo.num_points else None
         try:
             grid = self._grid(p)
         except ValueError as ex:
@@ -294,6 +295,7 @@ class PyroSolverSOP(SOP):
                   'idx': np.indices(res).reshape(3, -1).T.astype(np.float64),
                   'fuel': np.zeros(res), 'flame': np.zeros(res)}
             st['solid'] = self._solid(col_geo, grid)
+            st['colsig'] = float(col_geo.P.sum()) if col_geo is not None and col_geo.num_points else None
             state['sim'] = st
             state['frames'] = {}
             state['last'] = start
@@ -306,6 +308,10 @@ class PyroSolverSOP(SOP):
                 state.clear()
                 return self.cook(inputs, p, ctx)
             st = state['sim']
+            colsig = float(col_geo.P.sum()) if col_geo is not None and col_geo.num_points else None
+            if colsig != st.get('colsig'):
+                st['solid'] = self._solid(col_geo, grid)
+                st['colsig'] = colsig
             src = self._source(src_geo, grid, p, state)
             sub = max(int(p.substeps), 1)
             dt = 1.0 / ctx.fps / sub

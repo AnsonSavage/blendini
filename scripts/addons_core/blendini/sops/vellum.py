@@ -200,7 +200,8 @@ class VellumSOP(SOP):
         start = int(p.startframe)
         key = (tuple(sorted((k, v if not isinstance(v, list) else tuple(v)) for k, v in p.items())),
                geo.num_points, geo.num_prims, float(geo.P.sum()) if geo.num_points else 0.0,
-               col_geo.num_points, float(col_geo.P.sum()) if col_geo.num_points else 0.0)
+               # Collider topology only: animated colliders move without restarting the simulation.
+               col_geo.num_points, col_geo.num_prims)
         if state.get('key') != key or frame <= start or 'sim' not in state:
             state.clear()
             state['key'] = key

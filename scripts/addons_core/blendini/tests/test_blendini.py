@@ -906,6 +906,17 @@ class TestEverydaySops(unittest.TestCase):
         self.assertLess(ratios[0], 0.5)
         self.assertAlmostEqual(ratios[1], 1.5, delta=0.1)
 
+    def test_animated_collider_does_not_reset(self):
+        from blendini.sops import REGISTRY, default_parms, CookContext
+        cloth = cook_sop('xform', [cook_sop('grid', rows=6, cols=6, size=(2.0, 2.0))], t=(0, 1.0, 0))
+        st = {}
+        for f in range(1, 9):
+            col = cook_sop('sphere', rad=(0.4, 0.4, 0.4), t=(0.05 * f, 0.3, 0))
+            out = REGISTRY['vellum'].cook([cloth, col], default_parms('vellum'),
+                                          CookContext(frame=f, time=(f - 1) / 24, state=st))
+        self.assertEqual(len(st['frames']), 8)
+        self.assertLess(out.P[:, 1].mean(), 0.95)
+
     def test_skin(self):
         rows = Geometry.from_polys([[x, y, 0] for y in range(3) for x in range(4)],
                                    [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], closed=False)
