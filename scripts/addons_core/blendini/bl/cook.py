@@ -232,6 +232,10 @@ def cook_node(node, ctx_base, visiting=None):
                 input_sigs.append(s)
         parms = node.parm_values()
         channels = node.channels()
+        if 'snippet' in parms and '/' in parms['snippet']:
+            # ch("../node/parm") references: resolved here so they are part of the signature.
+            from .channels import resolved_channels
+            channels = dict(resolved_channels(node.id_data, parms['snippet']), **channels)
         inherited = ctx_base.get('subnet_channels')
         if inherited:
             # Parameters promoted to an enclosing subnet: ch("name") falls back to them.

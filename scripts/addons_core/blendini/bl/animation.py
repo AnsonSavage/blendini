@@ -94,6 +94,7 @@ def apply_animation(tree, frame, fps):
     if ad is None:
         return False
     channels = subnet_channels(tree)
+    from .channels import resolved_channels
     changed = False
     for fc in _fcurves(ad):
         if fc.mute:
@@ -105,7 +106,8 @@ def apply_animation(tree, frame, fps):
             continue
         drv = fc.driver
         if drv.type == 'SCRIPTED':
-            value = eval_driver_expression(drv.expression, frame, fps, channels)
+            expr_channels = dict(channels, **resolved_channels(tree, drv.expression))
+            value = eval_driver_expression(drv.expression, frame, fps, expr_channels)
             if value is None:
                 continue
         else:

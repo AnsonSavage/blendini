@@ -48,6 +48,7 @@ and needs a real Blender session to confirm.
 ## Later / ideas
 
 - [x] Subnet promoted parameters (HDA-style interface: `ch()` in wrangles and drivers inside)
+- [x] Channel references between nodes: `ch("../node/parm")` in VEX and driver expressions
 
 - [x] Multi-output nodes (cook engine reads the linked output) with the Split SOP
 - [x] VEX function overloading by signature, function-like `#define` macros

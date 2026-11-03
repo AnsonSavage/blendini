@@ -201,6 +201,8 @@ Builtins (partial list):
 - Strings: `sprintf printf itoa atof atoi strlen concat startswith endswith toupper tolower
   split join strip replace`.
 - Channels: `ch chf chi chv chs chramp`, backed by spare parameters. Ramps are curve widgets.
+  `ch("../grid1/sizex")` references another node's parameter. Component suffixes work as in
+  Houdini (`tx`, `sizey`), and the same paths work in driver expressions.
 - Point clouds: `pcopen pcfilter pcnumfound pcclose pcfind`.
 - Closest point queries: `xyzdist` (with `prim`/`uv` output arguments), `primuv`, `minpos`, using Blender's BVH tree.
 - Constants from `math.h`: `M_PI`, `M_TWO_PI`, `M_E`, `FLT_MAX` and others.

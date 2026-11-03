@@ -44,6 +44,11 @@ class TestParser(unittest.TestCase):
             parse('@P.y = 1;\n@P.x = ;')
         self.assertEqual(cm.exception.line, 2)
 
+    def test_channel_reference_paths(self):
+        from blendini.bl.channels import referenced_paths
+        code = 'f@a = ch("../grid1/sizex"); f@b = chf("amp"); v@c = chv(\'box1/t\'); f@d = ch("../grid1/sizex");'
+        self.assertEqual(referenced_paths(code), ['../grid1/sizex', 'box1/t'])
+
     def test_find_channels(self):
         chans = find_channels('float a = ch("amp"); vector c = chv("col"); int n = chi(\'num\'); ch("amp");')
         self.assertEqual(chans, [('amp', 'float'), ('col', 'vector'), ('num', 'int')])
