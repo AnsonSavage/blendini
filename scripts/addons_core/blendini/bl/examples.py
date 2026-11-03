@@ -156,6 +156,18 @@ def _build_displace_vop(vt):
     g.location = (-400, 0)
 
 
+STREAM_FIELD = """\
+// Volume Wrangle: a swirling, divergence free velocity field
+v@vel = curlnoise(@P * 0.6) * 2 + cross({0, 1, 0}, @P) * 0.8;
+"""
+
+STREAM_LOOK = """\
+// Streamlines render as curves: width tapers along each line, color by speed
+f@width = 0.025 * (1 - (@ptnum % 61) / 61.0) + 0.004;
+@Cd = hsvtorgb(set(0.6 - 0.45 * fit(f@speed, 0, 3, 0, 1), 0.75, 1));
+"""
+
+
 CLOUD = """\
 // Volume Wrangle: runs once per voxel. @density is the volume named "density".
 float d = 1.0 - length(@P * {1, 1.6, 1});
@@ -380,6 +392,21 @@ def build_examples():
     pyro = _node(t, 'pyrosolver', (0, 200), fire=True, turbulence=1.5, vorticity=0.6)
     _chain(t, [src, pyro])
     _finish(t, pyro)
+    trees.append(t)
+
+    t = _new_tree("streamlines", (124, 0, 0))
+    vol = _node(t, 'volume', (0, 600), kind='vector', name='vel', size=(4.0, 4.0, 4.0), voxelsize=0.1, usebounds=False)
+    field = _node(t, 'volumewrangle', (0, 400), snippet=STREAM_FIELD)
+    seeds = _node(t, 'scatter', (300, 400), npts=150, seed=2)
+    ball = _node(t, 'sphere', (300, 600), rad=(0.6, 0.6, 0.6))
+    trail = _node(t, 'volumetrail', (0, 200), steps=60, stepsize=0.04)
+    look = _node(t, 'pointwrangle', (0, 0), snippet=STREAM_LOOK)
+    t.links.new(vol.outputs[0], field.inputs[0])
+    t.links.new(ball.outputs[0], seeds.inputs[0])
+    t.links.new(seeds.outputs[0], trail.inputs[0])
+    t.links.new(field.outputs[0], trail.inputs[1])
+    t.links.new(trail.outputs[0], look.inputs[0])
+    _finish(t, look)
     trees.append(t)
 
     t = _new_tree("terrain", (115, 0, 0))
