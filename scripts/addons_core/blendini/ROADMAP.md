@@ -24,7 +24,7 @@ and needs a real Blender session to confirm.
 - [x] Attribute VOP (visual VEX network that generates code)
 - [x] Driver expressions on parameters evaluated through VEX (`#frame * 0.1`), keyframes
 
-### SOPs (103)
+### SOPs (104)
 - [x] Primitives, manipulation, polygon, attribute, group, copy/instancing, terrain, utility,
       Blender-backed (modifiers, bmesh, BVH, Bullet, OpenVDB) — see README for the full list
 - [x] Simulations: Solver (VEX), Vellum-style cloth (PBD), RBD (Bullet), PBF fluid + meshing
@@ -41,9 +41,9 @@ and needs a real Blender session to confirm.
 - [x] For-Each "by count" (run N iterations and merge, without feedback)
 - [x] More VOP nodes: compare + two-way switch, ramp (chramp), trig/exp/min/max, random vector
 - [x] VDB nodes through Geometry Nodes: VDB Reshape / Smooth SDF, VDB Combine (Blender 5 OpenVDB grid nodes)
-- [ ] Delete SOP (by number, by expression, by bounding box) as in Houdini
+- [x] Delete SOP (by pattern / expression, bounding box, normal, random) as in Houdini
 - [ ] Attribute Interpolate (sourceprim + uv from Scatter)
-- [ ] Self-test operator that runs the smoke test inside the user's Blender
+- [x] Self-test operator that runs the smoke test inside the user's Blender
 
 ## Later / ideas
 

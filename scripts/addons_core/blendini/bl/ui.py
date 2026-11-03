@@ -1112,6 +1112,7 @@ class BLENDINI_PT_network(bpy.types.Panel):
         layout.operator("blendini.houdini_theme", icon='COLOR')
         layout.operator("blendini.houdini_layout", icon='WORKSPACE')
         layout.operator("blendini.load_examples", icon='PRESET')
+        layout.operator("blendini.self_test", icon='CHECKMARK')
         box = layout.box()
         box.label(text="Hotkeys", icon='EVENT_TAB')
         col = box.column(align=True)
@@ -1415,7 +1416,8 @@ classes = (
 
 def _all_classes():
     from .examples import BLENDINI_OT_load_examples
-    return classes + (BLENDINI_OT_load_examples,)
+    from .selftest import BLENDINI_OT_self_test
+    return classes + (BLENDINI_OT_load_examples, BLENDINI_OT_self_test)
 
 
 def register():

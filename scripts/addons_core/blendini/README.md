@@ -27,7 +27,9 @@ cd scripts/addons_core/blendini
 blender --command extension build      # creates blendini-0.1.0.zip
 ```
 
-Then use *Preferences → Get Extensions → Install from Disk* with the zip.
+Then use *Preferences → Get Extensions → Install from Disk* with the zip. To check that
+everything works in your Blender, press *Run Blendini Self Test* in the node editor's
+*Blendini* sidebar tab. It cooks every SOP and some VEX, and reports any failures.
 
 ## Quick start
 
@@ -127,7 +129,7 @@ See [ROADMAP.md](ROADMAP.md) for what is done and what is planned.
 | Polygon   | **Voronoi Fracture\***, Particle Fluid Surface\* (OpenVDB meshing), **VDB Reshape / Smooth SDF\*** (dilate, erode, smooth, fillet), VDB Combine\* (SDF boolean), Add, Clean, Ends, Fuse, Facet, Divide, Reverse, PolyExtrude, PolyWire, Sweep, Resample, Carve, Convert Line, PolyPath, Subdivide\*, PolyBevel\*, Boolean\*, Remesh\*, PolyReduce\*, Clip\* |
 | Attribute | Attribute Create / Delete / Rename / Copy / Promote / Randomize / Noise / Transfer / Blur, Name, Attribute from Map\*, Color, Normal, Connectivity, Measure, UV Texture, UV Unwrap\* (Smart UV Project / Unwrap / Cube), PolyFrame, Trail (velocity, also feeds Blender motion blur) |
 | Terrain   | HeightField, HeightField Noise (fBm / ridged), HeightField Erode (thermal + flow-based hydraulic) |
-| Group     | Group Create (pattern / bounding box / normal / random / `@expression`), Group Combine, Group Promote, Blast |
+| Group     | Group Create (pattern / bounding box / normal / random / `@expression`), Group Combine, Group Promote, Blast, Delete |
 | Copy      | Copy to Points (orient, N/up, pscale, scale, piece variants, **Pack and Instance**), Pack, Unpack, Assemble, Copy and Transform, Scatter, Points from Volume\* |
 | VEX       | Attribute Wrangle (run over points / prims / vertices / detail / numbers), **Point Wrangle**, Primitive Wrangle, Detail Wrangle, **Attribute VOP** (visual VEX: Globals, Bind, Parameter, Ramp, math, logic / two-way switch, vector, noise and color VOPs; dive in with I; shows the generated VEX) |
 | Utility   | File (.obj), **Subnetwork** + Subnet Input (dive in with I, up with U), Merge (multi-input), Switch, Null, Output, Sort, Time Shift, **Block Begin / Block End (For-Each by pieces, count or feedback)** |

@@ -2441,3 +2441,43 @@ class AttribBlurSOP(SmoothSOP):
         Parm('iterations', "Blurring Iterations", 'int', default=10, min=0, soft_max=100),
         Parm('pinborder', "Pin Border Points", 'bool', default=False),
     )
+
+
+@register_sop
+class DeleteSOP(SOP):
+    id = 'delete'
+    label = "Delete"
+    category = 'Group'
+    inputs = 1
+    icon = 'X'
+    description = "Delete points or primitives by pattern, VEX expression, bounding box, normal or random"
+    parms = (
+        Parm('entity', "Entity", 'enum', items=CLASS_PP),
+        Parm('mode', "Operation", 'enum', items=[
+            ('pattern', "Delete by Pattern / Expression", "Numbers, groups or @expressions"),
+            ('bbox', "Delete by Bounding Box", ""), ('normal', "Delete by Normal", ""), ('random', "Delete Randomly", ""),
+        ]),
+        Parm('pattern', "Pattern", 'string', default='@P.y < 0', hide_when={'mode': ('bbox', 'normal', 'random')}),
+        Parm('size', "Box Size", 'vector', default=(1.0, 1.0, 1.0), hide_when={'mode': ('pattern', 'normal', 'random')}),
+        Parm('t', "Box Center", 'vector', hide_when={'mode': ('pattern', 'normal', 'random')}),
+        Parm('dir', "Direction", 'vector', default=(0.0, 1.0, 0.0), hide_when={'mode': ('pattern', 'bbox', 'random')}),
+        Parm('angle', "Spread Angle", 'float', default=45.0, min=0, max=180, hide_when={'mode': ('pattern', 'bbox', 'random')}),
+        Parm('percent', "Percentage", 'float', default=50.0, min=0, max=100, hide_when={'mode': ('pattern', 'bbox', 'normal')}),
+        Parm('seed', "Seed", 'int', default=0, hide_when={'mode': ('pattern', 'bbox', 'normal')}),
+        Parm('negate', "Delete Non-Selected", 'bool', default=False),
+        Parm('keeppoints', "Keep Unused Points", 'bool', default=False, hide_when={'entity': 'point'}),
+    )
+
+    def cook(self, inputs, p, ctx):
+        from . import cook_sop
+        geo = _in(inputs)
+        marked = cook_sop('groupcreate', [geo], groupname='__delete', grouptype=p.entity, mode=p.mode,
+                          pattern=p.pattern, size=p.size, t=p.t, dir=p.dir, angle=p.angle, percent=p.percent,
+                          seed=p.seed, invert=p.negate)
+        mask = marked.groups[p.entity].pop('__delete')
+        out = marked
+        if p.entity == PRIM:
+            out.delete_prims(mask, keep_points=p.keeppoints)
+        else:
+            out.delete_points(mask)
+        return out
