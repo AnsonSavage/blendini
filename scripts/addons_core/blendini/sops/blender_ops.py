@@ -742,6 +742,11 @@ class RBDSolverSOP(SOP):
              description="Shrink collision shapes so pieces that touch at the start don't push each other apart"),
         Parm('margin', "Collision Margin", 'float', default=0.001, min=0, soft_max=0.1,
              description="Small margins stop touching pieces (e.g. from a fracture) from pushing apart"),
+        Parm('output', "Output", 'enum', items=[
+            ('geometry', "Deformed Geometry", ""),
+            ('packed', "Packed Pieces", "One instance per piece (light to display and render)"),
+            ('points', "Transform Points", "P, orient, pivot and name per piece (for Transform Pieces)"),
+        ]),
         Parm('contype', "Default Constraint Type", 'enum', items=CONSTRAINT_TYPES,
              description="Used for constraint network polylines without a 'constraint_type' attribute"),
     )
@@ -889,7 +894,6 @@ class RBDSolverSOP(SOP):
         return count
 
     def cook(self, inputs, p, ctx):
-        from ..core.geometry import merge
         from ..core.instances import unpack
         from .modify import split_pieces
         geo = _in(inputs, 0)
@@ -924,7 +928,11 @@ class RBDSolverSOP(SOP):
             self._bake(state, start, max(frame, self._bake_end(start)))
         pieces = state['pieces']
         if frame <= start:
-            return geo
+            if p.output == 'geometry' or not pieces:
+                return geo
+            ident = np.repeat(np.eye(4)[None], len(pieces), axis=0)
+            ident[:, :3, 3] = state['centers']
+            return self._output(pieces, state['centers'], ident, p)
         frames = state['frames']
         if frame not in frames and deferred:
             # Stepping the simulation scene inside a frame change is unsafe: show the closest
@@ -940,14 +948,42 @@ class RBDSolverSOP(SOP):
                 _rbd_cleanup(state)
                 return self.cook(inputs, p, ctx)
             self._bake(state, start, max(frame, self._bake_end(start)))
-        mats = frames[frame]
-        out_pieces = []
-        for piece, c, m in zip(pieces, state['centers'], mats):
+        return self._output(pieces, state['centers'], frames[frame], p)
+
+    @staticmethod
+    def _output(pieces, centers, mats, p):
+        from ..core.geometry import merge
+        from ..core.instances import matrix_to_quat, set_instance_matrices
+        mats = np.asarray(mats)
+        R = mats[:, :3, :3]
+        # Normalize away any scale Blender may report, keep pure rotations.
+        R = R / np.maximum(np.linalg.norm(R, axis=1, keepdims=True), 1e-12)
+        pos = mats[:, :3, 3]
+        if p.output == 'geometry':
+            out_pieces = []
+            for piece, c, m in zip(pieces, centers, mats):
+                g = piece.copy()
+                g.P = (g.P - c) @ m[:3, :3].T + m[:3, 3]
+                out_pieces.append(g)
+            return merge(out_pieces)
+        from .modify import piece_names
+        names = np.array(piece_names(pieces, p.pieceattrib.strip()), dtype=object)
+        out = Geometry()
+        out.P = pos
+        out.attribs['point']['name'] = names
+        if p.output == 'points':
+            out.attribs['point']['orient'] = matrix_to_quat(R)
+            out.attribs['point']['pivot'] = np.asarray(centers, dtype=np.float64)
+            return out
+        locals_ = []
+        for piece, c in zip(pieces, centers):
             g = piece.copy()
-            local = g.P - c
-            g.P = local @ m[:3, :3].T + m[:3, 3]
-            out_pieces.append(g)
-        return merge(out_pieces)
+            g.P = g.P - c
+            locals_.append(g)
+        out.instances = locals_
+        out.attribs['point']['__inst'] = np.arange(len(pieces), dtype=np.int64)
+        set_instance_matrices(out, R)
+        return out
 
 
 def _piece_value(piece, name, default):
