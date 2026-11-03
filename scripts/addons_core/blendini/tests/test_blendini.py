@@ -737,6 +737,20 @@ class TestEverydaySops(unittest.TestCase):
         frac = np.mod(t.P[:, 1], 0.5)
         self.assertGreater(np.mean((frac < 0.05) | (frac > 0.45)), 0.5)   # mostly flat treads
 
+    def test_vellum_hair_bend(self):
+        from blendini.sops import REGISTRY, default_parms, CookContext
+        pts = [[i * 0.02, i * 0.1, 0] for i in range(10)]
+        g = Geometry.from_polys(pts, [list(range(10))], closed=False)
+        tips = []
+        for bend in (0.0, 1.0):
+            p = default_parms('vellum')
+            p.update(pingroup='@P.y < 0.15', bendstiffness=bend, ground=False)
+            st = {}
+            for f in (1, 30):
+                out = REGISTRY['vellum'].cook([g], p, CookContext(frame=f, time=(f - 1) / 24, state=st))
+            tips.append(out.P[9, 1])
+        self.assertGreater(tips[1], tips[0] + 0.3)
+
     def test_skin(self):
         rows = Geometry.from_polys([[x, y, 0] for y in range(3) for x in range(4)],
                                    [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], closed=False)

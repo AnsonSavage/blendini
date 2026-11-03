@@ -20,15 +20,20 @@ def _bend_pairs(geo):
     """Point pairs across shared edges (opposite vertices of adjacent triangles/quads)."""
     from collections import defaultdict
     edge_faces = defaultdict(list)
+    strand = []
     for prim in range(geo.num_prims):
         pts = geo.prim_points(prim).tolist()
         n = len(pts)
+        if not geo.prim_closed[prim] or n < 3:
+            # Curves (hair, strands): bend constraints between points two apart along the curve.
+            strand.extend((pts[i], pts[i + 2]) for i in range(n - 2))
+            continue
         for i in range(n):
             a, b = pts[i], pts[(i + 1) % n]
             # The point "opposite" this edge inside the face.
             opp = pts[(i + n // 2 + 1) % n] if n > 3 else pts[(i + 2) % n]
             edge_faces[(min(a, b), max(a, b))].append(opp)
-    pairs = [(f[0], f[1]) for f in edge_faces.values() if len(f) == 2 and f[0] != f[1]]
+    pairs = [(f[0], f[1]) for f in edge_faces.values() if len(f) == 2 and f[0] != f[1]] + strand
     return np.array(pairs, dtype=np.int64).reshape(-1, 2)
 
 
