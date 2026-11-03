@@ -205,6 +205,45 @@ class TestVex(unittest.TestCase):
         np.testing.assert_array_equal(pa['lastprim'], [e[-1] if e else 0 for e in evens])
         self.assertTrue(np.all(pa['lit'] == 903))
 
+    def test_more_builtins(self):
+        code = r"""
+        int h = primhedge(0, 0);
+        i@dst = hedge_dstpoint(0, h);
+        i@eq = hedge_equivcount(0, pointedge(0, 1, 4));
+        i@npv = len(pointvertices(0, 4));
+        s@re = re_replace("(\\d+)", "<\\1>", "piece12_a3");
+        i@m = match("pie*", "piece") + re_match("piece[0-9]+", "piece7");
+        vector e = {0.3, -0.7, 1.1};
+        v@back = quaterniontoeuler(eulertoquaternion(e, 0), 0);
+        matrix mm = ident(); scale(mm, {2, 3, 4}); translate(mm, {1, 2, 3});
+        v@cs = cracktransform(0, 0, 2, {0, 0, 0}, mm);
+        f@sp = spline("linear", 0.75, 0.0, 10.0, 20.0);
+        int a[] = {1, 2, 3}; upush(a, 3); upush(a, 9); removevalue(a, 1); i@up = len(a);
+        int pc = pcopen(0, "P", {0, 0, 0}, 1.1, 10);
+        int c = 0;
+        while (pciterate(pc)) c++;
+        while (pciterate(pc)) c++;
+        i@c = c;
+        """
+        g = cook_sop('grid', rows=3, cols=3, size=(2.0, 2.0))
+        out, msgs = _wrangle(code, g, run_over='detail')
+        d = out.attribs['detail']
+        self.assertEqual((int(d['dst'][0]), int(d['eq'][0]), int(d['npv'][0])), (3, 2, 4))
+        self.assertEqual(d['re'][0], 'piece<12>_a<3>')
+        self.assertEqual(int(d['m'][0]), 2)
+        np.testing.assert_allclose(d['back'][0], [0.3, -0.7, 1.1], atol=1e-9)
+        np.testing.assert_allclose(d['cs'][0], [2, 3, 4])
+        self.assertAlmostEqual(float(d['sp'][0]), 15.0)
+        self.assertEqual(int(d['up'][0]), 3)
+        self.assertEqual(int(d['c'][0]), 10)   # 5 points found, iterated twice
+
+    def test_intersect(self):
+        out, _ = run_wrangle('vector hp, uvw; i@hit = intersect(1, @P + {0, 5, 0}, {0, -10, 0}, hp, uvw); f@hy = hp.y;',
+                             [cook_sop('grid', rows=5, cols=5, size=(4.0, 4.0)), cook_sop('box')], run_over='point')
+        hits = out.attribs['point']['hit']
+        self.assertEqual(int((hits >= 0).sum()), 1)
+        self.assertAlmostEqual(float(out.attribs['point']['hy'][hits >= 0][0]), 0.5)
+
     def test_strings(self):
         out, msgs = _wrangle('s@name = sprintf("piece%d", @ptnum); printf("%s\\n", s@name);')
         self.assertEqual(out.attribs['point']['name'][3], 'piece3')

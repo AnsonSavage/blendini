@@ -1902,3 +1902,6 @@ def _colormap(I, args, mask, hint):
     if hint == 'vector4':
         return V('vector4', rgba.astype(np.float64))
     return V('vector', rgba[:, :3].astype(np.float64))
+
+
+from . import builtins_more  # noqa: E402,F401  (registers more functions)

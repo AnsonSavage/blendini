@@ -189,13 +189,23 @@ Builtins (partial list):
 - Color and textures: `hsvtorgb rgbtohsv colormap texture` (Blender images by name or path).
 - Vectors: `length length2 distance distance2 normalize dot cross reflect set getcomp`.
 - Matrices and quaternions: `ident rotate scale translate transpose invert determinant
-  maketransform lookat dihedral quaternion qconvert qrotate qmultiply slerp eulertoquaternion`.
-- Random: `rand random noise snoise onoise curlnoise sample_direction_uniform`.
+  maketransform lookat dihedral quaternion qconvert qrotate qmultiply qinvert slerp eulertoquaternion
+  quaterniontoeuler cracktransform prerotate prescale pretranslate outerproduct setcomp`.
+- Random: `rand random nrandom noise snoise onoise curlnoise sample_direction_uniform
+  sample_hemisphere sample_direction_cone sample_disk_uniform sample_circle_uniform`.
 - Geometry reads: `point prim vertex detail npoints nprims nvertices primpoints pointprims
   primpoint primvertexcount neighbours neighbourcount nearpoint nearpoints
   getbbox getbbox_min/max/center/size relbbox inpointgroup inprimgroup haspointattrib
   vertexpoint vertexprim idtopoint findattribval primarea primintrinsic attrib
-  npointsgroup nprimitivesgroup`.
+  npointsgroup nprimitivesgroup primvertices pointvertices vertexindex vertexprimindex
+  nuniqueval uniqueval uniquevals findattribvalcount nametopoint nametoprim attribtype attribsize
+  intersect primarclen pcopen pcfilter pciterate pcimport`.
+- Half-edges: `primhedge pointhedge pointedge hedge_srcpoint hedge_dstpoint hedge_next hedge_prev
+  hedge_prim hedge_isvalid hedge_isprimary hedge_equivcount hedge_nextequiv hedge_presrcpoint hedge_postdstpoint`.
+- Strings: `sprintf itoa atoi split join replace strip lstrip rstrip re_match re_find re_findall
+  re_replace re_split match startswith endswith toupper tolower isdigit isalpha slice`.
+- Curves and misc: `spline (linear / catrom / constant) planepointdistance ptlined fmod hypot cbrt isnan
+  isfinite luminance blackbody upush removevalue`.
 - Geometry writes: `addpoint addprim addvertex removepoint removeprim setpointattrib
   setprimattrib setvertexattrib setdetailattrib setattrib addpointattrib addprimattrib
   adddetailattrib setpointgroup setprimgroup`. The `"add"`,
@@ -232,7 +242,7 @@ blendini/
   core/noise.py      vectorized Perlin noise, curl noise, hash random
   vex/parser.py      lexer + recursive descent parser for VEX
   vex/interp.py      SIMD masked interpreter
-  vex/builtins.py    VEX function library
+  vex/builtins.py    VEX function library (builtins_more.py: half-edges, regex, sampling ...)
   vex/wrangle.py     binds attributes, runs the snippet, applies deferred geometry edits
   sops/              declarative SOP definitions (no Blender dependency, except blender_ops.py)
   bl/                Blender integration: node tree, cooking/cache, mesh conversion, UI

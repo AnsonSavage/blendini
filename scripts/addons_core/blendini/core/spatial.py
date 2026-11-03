@@ -57,7 +57,7 @@ def ray_cast(geo, origins, directions, maxdist=1e30):
     try:
         from mathutils.bvhtree import BVHTree
     except ImportError:
-        return hit, loc, nrm, prim, dist
+        return ray_cast_numpy(geo.P, tris, tri_prim, origins, directions, maxdist)
     tree = BVHTree.FromPolygons(geo.P.tolist(), tris.tolist(), all_triangles=True)
     for i, (o, d) in enumerate(zip(np.asarray(origins).tolist(), np.asarray(directions).tolist())):
         res = tree.ray_cast(o, d, maxdist)
@@ -154,3 +154,40 @@ def closest_numpy(P, tris, tri_prim, points):
         nrm[s:s + chunk] = fn[j]
         prim[s:s + chunk] = tri_prim[j]
     return loc, nrm, prim, dist
+
+
+def ray_cast_numpy(P, tris, tri_prim, origins, directions, maxdist=1e30):
+    """Brute force Moller-Trumbore ray casting (used when mathutils is not available)."""
+    origins = np.asarray(origins, dtype=np.float64)
+    directions = np.asarray(directions, dtype=np.float64)
+    directions = directions / np.maximum(np.linalg.norm(directions, axis=1, keepdims=True), 1e-30)
+    n = len(origins)
+    hit = np.zeros(n, dtype=bool)
+    loc = origins.copy()
+    nrm = np.zeros((n, 3))
+    prim = np.full(n, -1, dtype=np.int64)
+    dist = np.zeros(n)
+    A, B, C = P[tris[:, 0]], P[tris[:, 1]], P[tris[:, 2]]
+    e1, e2 = B - A, C - A
+    fn = np.cross(e1, e2)
+    fn /= np.maximum(np.linalg.norm(fn, axis=1, keepdims=True), 1e-30)
+    for i in range(n):
+        o, d = origins[i], directions[i]
+        pv = np.cross(d, e2)
+        det = np.einsum('ij,ij->i', e1, pv)
+        ok = np.abs(det) > 1e-12
+        inv = np.where(ok, 1.0 / np.where(ok, det, 1.0), 0.0)
+        tv = o - A
+        u = np.einsum('ij,ij->i', tv, pv) * inv
+        qv = np.cross(tv, e1)
+        v = (qv @ d) * inv
+        t = np.einsum('ij,ij->i', e2, qv) * inv
+        ok &= (u >= 0) & (v >= 0) & (u + v <= 1) & (t > 1e-9) & (t <= maxdist)
+        if ok.any():
+            j = int(np.argmin(np.where(ok, t, np.inf)))
+            hit[i] = True
+            dist[i] = t[j]
+            loc[i] = o + d * t[j]
+            nrm[i] = fn[j] if fn[j] @ d < 0 else -fn[j]
+            prim[i] = tri_prim[j]
+    return hit, loc, nrm, prim, dist
