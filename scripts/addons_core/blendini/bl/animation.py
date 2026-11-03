@@ -50,12 +50,22 @@ def _assign(tree, data_path, index, value):
         pass
 
 
+_HOUDINI_VARS = {'FF': '@Frame', 'F': 'rint(@Frame)', 'T': '@Time', 'FPS': 'fps', 'PI': 'M_PI', 'E': 'M_E',
+                 'NFRAMES': '1000000'}
+
+
+def houdini_variables(expr):
+    """Houdini's expression variables ($F, $FF, $T, $FPS, $PI, $E) in VEX terms."""
+    import re
+    return re.sub(r'\$([A-Z]+)\b', lambda m: _HOUDINI_VARS.get(m.group(1), m.group(0)), expr)
+
+
 def eval_driver_expression(expr, frame, fps, channels=None):
     """Evaluate a driver expression with the VEX interpreter. Returns a float or None."""
     import numpy as np
     from ..vex.wrangle import run_wrangle
     from ..core.geometry import Geometry
-    expr = expr.strip().lstrip('#')
+    expr = houdini_variables(expr.strip().lstrip('#'))
     if not expr:
         return None
     code = ("float frame = @Frame; float time = @Time; float fps = %r;\n"

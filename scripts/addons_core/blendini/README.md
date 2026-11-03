@@ -107,6 +107,7 @@ See [ROADMAP.md](ROADMAP.md) for what is done and what is planned.
 
 | Houdini | Blendini |
 |---------|----------|
+| `$F`, `$T`, `$FPS` in parameters | Driver expressions (type `#$F * 0.1` in a field): `$F $FF $T $FPS $PI $E` work, evaluated as VEX |
 | `/obj/geo1` geometry node | A Blender object plus its *Blendini SOP Network* (`geo1`) |
 | Network editor, **Tab** menu | Node editor with a Blendini tree, **Tab** menu (type to search) |
 | Display / template / bypass flags | Flag buttons on each node, **R** (display), **M** (bypass), colored bars on the node edges |

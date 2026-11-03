@@ -276,6 +276,11 @@ def main():
                 bpy.data.objects.remove(target)
             bpy.data.objects.remove(ob)
 
+    def houdini_expression_variables():
+        from blendini.bl.animation import eval_driver_expression
+        assert eval_driver_expression('$F / $FPS', 12.0, 24.0) == 0.5
+        assert abs(eval_driver_expression('sin($PI / 2) + $T', 25.0, 24.0) - 2.0) < 1e-9
+
     def unregister():
         blendini.unregister()
 
@@ -290,6 +295,7 @@ def main():
     check("digital assets (shared subnet definitions)", digital_assets)
     check("attribute paint commit", attribute_paint)
     check("instance Blender objects by name", instance_objects)
+    check("Houdini expression variables", houdini_expression_variables)
     check("unregister", unregister)
     print("\n%d failure(s)" % len(failures))
     return 1 if failures else 0
