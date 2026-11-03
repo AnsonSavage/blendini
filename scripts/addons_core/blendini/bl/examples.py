@@ -402,7 +402,7 @@ def build_examples():
     t = _new_tree("fluid_dambreak", (130, 0, 0))
     blk = _node(t, 'box', (0, 600), size=(1.2, 1.6, 1.8), t=(-1.35, 0.8, 0.0))
     pfv = _node(t, 'pointsfromvolume', (0, 400), pointsep=0.08)
-    fl = _node(t, 'fluidsolver', (0, 200), particlesep=0.08, boxmin=(-2.0, 0.0, -0.9), boxmax=(2.0, 3.0, 0.9))
+    fl = _node(t, 'flipsolver', (0, 200), particlesep=0.08, boxmin=(-2.0, 0.0, -0.9), boxmax=(2.0, 3.0, 0.9))
     surf = _node(t, 'particlefluidsurface', (0, 0), particlesep=0.08)
     col = _node(t, 'pointwrangle', (0, -200), snippet='@Cd = {0.1, 0.35, 0.8};')
     _chain(t, [blk, pfv, fl, surf, col])

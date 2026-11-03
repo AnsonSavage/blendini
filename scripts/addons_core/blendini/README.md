@@ -14,10 +14,10 @@ Wrangle.*
 *Heightfield mask and scatter forest, a Volume Wrangle cloud, Pyro fire and smoke, and an
 L-system rendered as curves with a width attribute.*
 
-**Highlights:** 151 SOPs and a VEX interpreter with about 290 functions (structs, dicts,
+**Highlights:** 152 SOPs and a VEX interpreter with about 290 functions (structs, dicts,
 half-edges, point clouds, volumes). Also: Attribute and Volume VOPs, native volumes with
 smoke and fire rendering, a Pyro solver, Vellum cloth and hair, RBD with constraint networks,
-a PBF fluid, heightfields, For-Each, subnets, File Cache, and Houdini-style flags, TAB menu,
+FLIP and PBF liquids, heightfields, For-Each, subnets, File Cache, and Houdini-style flags, TAB menu,
 spreadsheet, viewport handles and digital assets.
 
 Blendini is an open-source take on Houdini's geometry context. It uses Blender as the
@@ -55,7 +55,7 @@ Or step by step:
    plus its SOP network, like `/obj/geo1`) and opens the network in a node editor.
 3. Or use *Add → Blendini Examples* to build eighteen example networks: ripple, scatter and
    copy, plexus, city, particles, for-each, L-system tree, Vellum cloth, fracture, RBD
-   fracture, RBD hanging chain (constraint network pinned to the world), eroded terrain with a scattered forest, VEX volume cloud, pyro smoke plume and pyro fire (render as smoke / fire), fluid dam break, VOP displacement and spiral. Press play for the simulations.
+   fracture, RBD hanging chain (constraint network pinned to the world), eroded terrain with a scattered forest, VEX volume cloud, pyro smoke plume and pyro fire (render as smoke / fire), FLIP dam break, VOP displacement and spiral. Press play for the simulations.
 4. In the node editor:
    - **Tab**: Houdini-style TAB menu (start typing to search). With a node selected, the new
      node is wired to its output and takes over the display flag, like Houdini.
@@ -123,7 +123,7 @@ See [ROADMAP.md](ROADMAP.md) for what is done and what is planned.
 | Performance Monitor | *Show Cook Times* in the Network panel: each node's cook time next to it (red for the slowest) |
 | Digital assets (HDAs) | *Create Digital Asset* on a subnet: a shared definition (also a Blender asset) listed in the TAB menu; every instance updates when it is edited, promoted parameters stay per instance |
 | Network boxes, dots | Network Box (Blender frame) and Dot (reroute) in the TAB menu's Layout section |
-| SOP Solver, Vellum, RBD (Bullet), FLIP, Pyro | Solver (VEX), Vellum Cloth (PBD), RBD Bullet Solver, Fluid Solver (PBF) + Particle Fluid Surface, Pyro Solver (Smoke) |
+| SOP Solver, Vellum, RBD (Bullet), FLIP, Pyro | Solver (VEX), Vellum Cloth (PBD), RBD Bullet Solver, FLIP Solver or Fluid Solver (PBF) + Particle Fluid Surface, Pyro Solver (Smoke / Fire) |
 | VDB / volumes, Volume Wrangle | Native voxel volumes (Volume, Volume from Polygons, **Volume Wrangle** with `@density`, Convert Volume). Fog volumes render as smoke through a Blender Volume object (OpenVDB). OpenVDB through Geometry Nodes for Particle Fluid Surface and VDB Reshape |
 | Mantra / Karma | Cycles / EEVEE; `Cd` is rendered by the automatic *Blendini Cd* material |
 | Y-up | Y-up inside networks; output objects are rotated into Blender's Z-up |
@@ -148,7 +148,7 @@ See [ROADMAP.md](ROADMAP.md) for what is done and what is planned.
 |-----------|------|
 | Primitive | Box, Grid, Sphere (UV / icosahedron), Tube, Torus, Circle, Line, Platonic Solids, Bound, Font\*, L-System, Curve (polygon / Catmull-Rom / Bézier from typed coordinates) |
 | Manipulate| Transform, Primitive, Mirror, Relax, Bend (bend / twist / taper), **Path Deform** (along a curve), Blend Shapes, Exploded View, **Lattice** (free-form deformation), Point Deform, Match Size, **Edit** (move points in Blender's Edit Mode, stored as offsets), Mountain, Point Jitter, Peak, Smooth, Ray\* |
-| Simulation| **Solver (VEX)** (SOP Solver), **Vellum Cloth (PBD)** (stretch/bend constraints, pins, ground, colliders; polylines simulate as hair / strands), **RBD Bullet Solver\*** (Blender's rigid bodies in a private scene, optional breakable glue between neighbouring pieces, **constraint networks** on the third input: glue / fixed / point / hinge / slider / spring polylines, pins to the world), **Connect Adjacent Pieces** (builds constraint networks), **Fluid Solver (PBF)** (experimental particle fluid in a box), **Pyro Solver (Smoke / Fire)** (grid smoke: sources from polygons / points / density volumes, buoyancy, cooling, dissipation, vorticity confinement, curl noise turbulence, wind, colliders; optional combustion: fuel burns into heat, smoke and a flame field rendered with an emissive fire material) |
+| Simulation| **Solver (VEX)** (SOP Solver), **Vellum Cloth (PBD)** (stretch/bend constraints, pins, ground, colliders; polylines simulate as hair / strands), **RBD Bullet Solver\*** (Blender's rigid bodies in a private scene, optional breakable glue between neighbouring pieces, **constraint networks** on the third input: glue / fixed / point / hinge / slider / spring polylines, pins to the world), **Connect Adjacent Pieces** (builds constraint networks), **FLIP Solver** (liquid: particle/grid FLIP-PIC with free-surface pressure, separation, container and colliders), **Fluid Solver (PBF)** (particle fluid in a box), **Pyro Solver (Smoke / Fire)** (grid smoke: sources from polygons / points / density volumes, buoyancy, cooling, dissipation, vorticity confinement, curl noise turbulence, wind, colliders; optional combustion: fuel burns into heat, smoke and a flame field rendered with an emissive fire material) |
 | Polygon   | **Voronoi Fracture\***, Particle Fluid Surface\* (OpenVDB meshing), **VDB Reshape / Smooth SDF\*** (dilate, erode, smooth, fillet), VDB Combine\* (SDF boolean), Add, Clean, Ends, Fuse, Facet, PolyFill\*, PolyBridge\*, Dissolve\*, Shrinkwrap\* (convex hull), Triangulate 2D\* (Delaunay), Divide, Reverse, PolyExtrude, PolyWire, Sweep, Revolve, Skin, PolyCap, Resample, Carve, Convert Line, PolyPath, Subdivide\*, PolyBevel\*, Boolean\*, Remesh\*, PolyReduce\*, Clip\* |
 | Attribute | Attribute Create / Delete / Rename / Copy / Promote / Randomize / Noise / Transfer / Blur / Interpolate / String Edit, Name, Rest Position, Attribute from Map\*, Color, Normal, Connectivity, Enumerate, Distance from Geometry, Attribute Adjust Float / Vector (constant, random or noise; set, add, multiply, min, max), Calculate Occlusion (ray traced AO), Measure, UV Texture, UV Unwrap\* (Smart UV Project / Unwrap / Cube), UV Layout\* (pack islands), UV Transform, PolyFrame, Trail (velocity, also feeds Blender motion blur) |
 | Volume    | Volume (fog / SDF / vector grid), **Volume from Polygons** (VDB from Polygons: SDF or fog), **Volume Wrangle** (VEX per voxel: `@density`, `v@vel`, `@P`, `@ix`; new `@names` create volumes), **Volume VOP** (the same with a VOP network), Volume Blur, Volume Rasterize Points (density and v), Convert Volume (surface nets iso surface). Fog volumes are shown and rendered as smoke (a Blender Volume object, OpenVDB file), SDFs as their surface |

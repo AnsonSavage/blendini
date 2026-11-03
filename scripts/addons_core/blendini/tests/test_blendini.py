@@ -792,6 +792,23 @@ class TestEverydaySops(unittest.TestCase):
         gt = cook_sop('grouptransfer', [cook_sop('grid', rows=20, cols=20), src], class_='point', maxdist=2.0)
         self.assertEqual(int(gt.groups['point']['top'].sum()), 200)
 
+    def test_flip_dam_break(self):
+        from blendini.sops import REGISTRY, default_parms, CookContext
+        sep = 0.1
+        X, Y, Z = np.meshgrid(np.arange(0, 0.8, sep) - 1.45, np.arange(sep / 2, 1.0, sep), np.arange(-0.45, 0.45, sep),
+                              indexing='ij')
+        src = Geometry.from_polys(np.stack([X.ravel(), Y.ravel(), Z.ravel()], 1))
+        p = default_parms('flipsolver')
+        p.update(particlesep=sep, boxmin=(-1.5, 0.0, -0.5), boxmax=(1.5, 2.0, 0.5))
+        st = {}
+        for f in (1, 30):
+            out = REGISTRY['flipsolver'].cook([src], p, CookContext(frame=f, time=(f - 1) / 24, state=st))
+        self.assertEqual(out.num_points, src.num_points)
+        self.assertGreater(out.P[:, 0].max(), 0.5)              # the column collapsed and spread
+        self.assertLess(out.P[:, 1].mean(), src.P[:, 1].mean())
+        lo, hi = np.array(p['boxmin']), np.array(p['boxmax'])
+        self.assertTrue(np.all((out.P >= lo - 1e-9) & (out.P <= hi + 1e-9)))
+
     def test_skin(self):
         rows = Geometry.from_polys([[x, y, 0] for y in range(3) for x in range(4)],
                                    [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], closed=False)
