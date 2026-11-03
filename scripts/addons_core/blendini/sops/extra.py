@@ -944,3 +944,214 @@ class MaterialSOP(SOP):
         arr[parse_group_pattern(geo, 'prim', p.group)] = p.material.strip()
         geo.attribs['prim']['shop_materialpath'] = arr
         return geo
+
+
+@register_sop
+class BlendShapesSOP(SOP):
+    id = 'blendshapes'
+    label = "Blend Shapes"
+    category = 'Manipulate'
+    inputs = 4
+    input_labels = ("Base", "Target 1", "Target 2", "Target 3")
+    icon = 'SHAPEKEY_DATA'
+    description = "Blend point positions (and Cd / N) toward up to three targets with matching point counts"
+    parms = (
+        Parm('w1', "Blend 1", 'float', default=0.5, soft_min=0.0, soft_max=1.0),
+        Parm('w2', "Blend 2", 'float', default=0.0, soft_min=0.0, soft_max=1.0),
+        Parm('w3', "Blend 3", 'float', default=0.0, soft_min=0.0, soft_max=1.0),
+        Parm('attribs', "Attributes", 'string', default='P Cd N', description="Point attributes to blend"),
+    )
+
+    def cook(self, inputs, p, ctx):
+        base = _in(inputs, 0)
+        out = base.copy()
+        n = base.num_points
+        for k, w in ((1, p.w1), (2, p.w2), (3, p.w3)):
+            tgt = inputs[k] if len(inputs) > k else None
+            if tgt is None or w == 0:
+                continue
+            if tgt.num_points != n:
+                ctx.warn("Blend Shapes: target %d has %d points (base has %d)" % (k, tgt.num_points, n))
+                continue
+            for name in p.attribs.split():
+                a = out.attribs[POINT].get(name)
+                b0 = base.attribs[POINT].get(name)
+                t = tgt.attribs[POINT].get(name)
+                if a is None or b0 is None or t is None or a.dtype == object or t.shape != b0.shape:
+                    continue
+                out.attribs[POINT][name] = a + (t - b0) * w
+        if 'N' in out.attribs[POINT] and out.attribs[POINT]['N'].ndim == 2:
+            N = out.attribs[POINT]['N']
+            out.attribs[POINT]['N'] = N / np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
+        return out
+
+
+@register_sop
+class ExplodedViewSOP(SOP):
+    id = 'explodedview'
+    label = "Exploded View"
+    category = 'Manipulate'
+    inputs = 1
+    icon = 'FULLSCREEN_EXIT'
+    description = "Push pieces away from the center (inspect fractures and assemblies)"
+    parms = (
+        Parm('pieceattrib', "Piece Attribute", 'string', default='name'),
+        Parm('scale', "Scale", 'float', default=0.5, soft_min=0.0, soft_max=3.0),
+        Parm('center', "Center", 'enum', items=[('bbox', "Bounding Box Center", ""), ('origin', "Origin", "")]),
+    )
+
+    def cook(self, inputs, p, ctx):
+        from ..core.geometry import merge
+        src = _in(inputs)
+        if src.num_prims == 0:
+            return src.copy()
+        pieces = split_pieces(src, p.pieceattrib.strip())
+        lo, hi = src.bbox()
+        c = (lo + hi) / 2 if p.center == 'bbox' else np.zeros(3)
+        moved = []
+        for pc in pieces:
+            g = pc.copy()
+            if g.num_points:
+                g.P = g.P + (g.P.mean(axis=0) - c) * p.scale
+            moved.append(g)
+        return merge(moved)
+
+
+def boundary_loops(geo):
+    """Closed loops of boundary edges (edges used by one polygon), oriented opposite to their faces."""
+    from collections import defaultdict
+    count = defaultdict(int)
+    directed = {}
+    for prim in range(geo.num_prims):
+        if not geo.prim_closed[prim]:
+            continue
+        pts = geo.prim_points(prim).tolist()
+        m = len(pts)
+        for k in range(m):
+            a, b = pts[k], pts[(k + 1) % m]
+            count[(min(a, b), max(a, b))] += 1
+            directed[(a, b)] = True
+    nxt = {}
+    for (a, b) in directed:
+        if count[(min(a, b), max(a, b))] == 1:
+            nxt[b] = a       # reversed: the cap faces the other way
+    loops = []
+    seen = set()
+    for start in list(nxt):
+        if start in seen:
+            continue
+        loop = [start]
+        seen.add(start)
+        cur = nxt[start]
+        while cur != start and cur in nxt and cur not in seen:
+            loop.append(cur)
+            seen.add(cur)
+            cur = nxt[cur]
+        if cur == start and len(loop) >= 3:
+            loops.append(loop)
+    return loops
+
+
+@register_sop
+class PolyCapSOP(SOP):
+    id = 'polycap'
+    label = "PolyCap"
+    category = 'Polygon'
+    inputs = 1
+    icon = 'MESH_CIRCLE'
+    description = "Close holes: one polygon per boundary loop (or a triangle fan around its center)"
+    parms = (
+        Parm('mode', "Cap Type", 'enum', items=[('ngon', "Single Polygon", ""), ('fan', "Triangle Fan", "")]),
+        Parm('groupname', "Output Group", 'string', default='caps'),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs).copy()
+        loops = boundary_loops(geo)
+        n0 = geo.num_prims
+        for loop in loops:
+            if p.mode == 'ngon':
+                geo.add_prims([loop])
+            else:
+                c = geo.add_points(geo.P[loop].mean(axis=0)[None])[0]
+                m = len(loop)
+                geo.add_prims([[loop[k], loop[(k + 1) % m], c] for k in range(m)])
+        if p.groupname.strip():
+            g = np.zeros(geo.num_prims, dtype=bool)
+            g[n0:] = True
+            geo.groups['prim'][p.groupname.strip()] = g
+        return geo
+
+
+@register_sop
+class PointReplicateSOP(SOP):
+    id = 'pointreplicate'
+    label = "Point Replicate"
+    category = 'Copy'
+    inputs = 1
+    icon = 'PARTICLE_POINT'
+    description = "Several jittered copies of every point (e.g. more particles before rasterizing)"
+    parms = (
+        Parm('count', "Copies per Point", 'int', default=5, min=1, soft_max=100),
+        Parm('radius', "Jitter Radius", 'float', default=0.1, min=0.0, soft_max=2.0),
+        Parm('usepscale', "Scale by pscale", 'bool', default=True),
+        Parm('seed', "Seed", 'int', default=0),
+    )
+
+    def cook(self, inputs, p, ctx):
+        src = _in(inputs)
+        n = src.num_points
+        out = Geometry()
+        if n == 0:
+            return out
+        k = max(int(p.count), 1)
+        idx = np.repeat(np.arange(n), k)
+        rng = np.random.default_rng(int(p.seed) & 0x7FFFFFFF)
+        d = rng.normal(size=(n * k, 3))
+        d /= np.maximum(np.linalg.norm(d, axis=1, keepdims=True), 1e-12)
+        d *= np.cbrt(rng.random(n * k))[:, None] * p.radius
+        if p.usepscale and 'pscale' in src.attribs[POINT]:
+            d *= np.asarray(src.attribs[POINT]['pscale'], dtype=np.float64)[idx][:, None]
+        out.P = src.P[idx] + d
+        for name, arr in src.attribs[POINT].items():
+            if name != 'P':
+                out.attribs[POINT][name] = arr[idx]
+        out.attribs[POINT]['sourceptnum'] = idx
+        return out
+
+
+@register_sop
+class GroupTransferSOP(SOP):
+    id = 'grouptransfer'
+    label = "Group Transfer"
+    category = 'Group'
+    inputs = 2
+    input_labels = ("Geometry", "Groups From")
+    icon = 'GROUP'
+    description = "Copy point / primitive groups from the second input by nearest position"
+    parms = (
+        Parm('class', "Group Type", 'enum', items=CLASS_PP),
+        Parm('groups', "Groups", 'string', default='*'),
+        Parm('maxdist', "Distance Threshold", 'float', default=0.1, min=0.0, soft_max=10.0),
+    )
+
+    def cook(self, inputs, p, ctx):
+        import fnmatch
+        from ..core import spatial
+        geo = _in(inputs, 0).copy()
+        src = _in(inputs, 1)
+        cls = p['class']
+        names = [g for g in src.groups[cls] if any(fnmatch.fnmatchcase(g, pat) for pat in (p.groups or '*').split())]
+        if not names:
+            return geo
+        if cls == 'point':
+            qp, sp = geo.P, src.P
+        else:
+            qp, sp = geo.prim_centers(), src.prim_centers()
+        idx, dist = spatial.nearest(sp, qp, p.maxdist if p.maxdist > 0 else np.inf)
+        ok = idx >= 0
+        for name in names:
+            g = np.zeros(len(qp), dtype=bool)
+            g[ok] = src.groups[cls][name][idx[ok]]
+            geo.groups[cls][name] = g
+        return geo

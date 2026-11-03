@@ -776,6 +776,22 @@ class TestEverydaySops(unittest.TestCase):
             tips.append(out.P[9, 1])
         self.assertGreater(tips[1], tips[0] + 0.3)
 
+    def test_sop_batch_three(self):
+        b = cook_sop('sphere')
+        bs = cook_sop('blendshapes', [b, cook_sop('xform', [b], s=(2, 1, 1))], w1=0.5)
+        self.assertAlmostEqual(float(bs.bbox()[1][0]), 1.5, places=6)
+        fr = merge([cook_sop('box', t=(i * 1.0, 0, 0)) for i in range(3)])
+        ev = cook_sop('explodedview', [fr], scale=1.0)
+        np.testing.assert_allclose([ev.bbox()[0][0], ev.bbox()[1][0]], [-1.5, 3.5], atol=1e-9)
+        pc = cook_sop('polycap', [cook_sop('tube', cap=False)])
+        caps = pc.groups['prim']['caps']
+        self.assertEqual(int(caps.sum()), 2)
+        np.testing.assert_allclose(sorted(pc.prim_normals()[caps][:, 1]), [-1, 1], atol=1e-6)
+        self.assertEqual(cook_sop('pointreplicate', [cook_sop('scatter', [b], npts=10)], count=4).num_points, 40)
+        src, _ = run_wrangle('setpointgroup(0, "top", @ptnum, @P.z > 0);', [cook_sop('grid')], run_over='point')
+        gt = cook_sop('grouptransfer', [cook_sop('grid', rows=20, cols=20), src], class_='point', maxdist=2.0)
+        self.assertEqual(int(gt.groups['point']['top'].sum()), 200)
+
     def test_skin(self):
         rows = Geometry.from_polys([[x, y, 0] for y in range(3) for x in range(4)],
                                    [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], closed=False)
