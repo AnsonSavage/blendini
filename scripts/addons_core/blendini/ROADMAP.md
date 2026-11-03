@@ -76,7 +76,8 @@ and needs a real Blender session to confirm.
 - [x] Constraint networks from geometry (Connect Adjacent Pieces → RBD third input: glue, fixed,
       point, hinge, slider, spring; per-primitive strength / stiffness / axis; world pins)
 - [x] Pyro-style smoke solver (stable fluids on native volumes: buoyancy, vorticity, turbulence)
-- [ ] FLIP-style fluid (surface tension, narrow band), fire / combustion
+- [x] Fire: combustion in the Pyro Solver (fuel, burn, heat, flame field + fire material)
+- [ ] FLIP-style fluid (surface tension, narrow band)
 - [x] Viewport handle for the Transform SOP (translate arrows + rotate dials)
 - [x] More handles: Transform scale and pivot, primitives (center / size / radius), origins,
       lengths, bounding box groups (table driven, `bl/handles.py`)

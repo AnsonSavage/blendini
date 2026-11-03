@@ -81,6 +81,49 @@ def _material():
     return mat
 
 
+FIRE_MATERIAL = "Blendini Fire"
+
+
+def _fire_material():
+    """Smoke plus emission from the 'flame' grid (blackbody colored by flame intensity)."""
+    mat = bpy.data.materials.get(FIRE_MATERIAL)
+    if mat is not None:
+        return mat
+    mat = bpy.data.materials.new(FIRE_MATERIAL)
+    mat.use_nodes = True
+    nt = mat.node_tree
+    for n in list(nt.nodes):
+        nt.nodes.remove(n)
+    out = nt.nodes.new('ShaderNodeOutputMaterial')
+    pv = nt.nodes.new('ShaderNodeVolumePrincipled')
+    pv.location = (-300, 0)
+    flame = nt.nodes.new('ShaderNodeAttribute')
+    flame.attribute_name = 'flame'
+    flame.location = (-900, -200)
+    strength = nt.nodes.new('ShaderNodeMath')
+    strength.operation = 'MULTIPLY'
+    strength.inputs[1].default_value = 6.0
+    strength.location = (-600, -250)
+    ramp = nt.nodes.new('ShaderNodeValToRGB')
+    ramp.location = (-650, 50)
+    els = ramp.color_ramp.elements
+    els[0].position, els[0].color = 0.0, (0.6, 0.05, 0.0, 1.0)
+    els[1].position, els[1].color = 1.0, (1.0, 0.75, 0.3, 1.0)
+    mid = els.new(0.45)
+    mid.color = (1.0, 0.3, 0.02, 1.0)
+    links = nt.links
+    links.new(flame.outputs['Fac'], strength.inputs[0])
+    links.new(flame.outputs['Fac'], ramp.inputs['Fac'])
+    try:
+        links.new(strength.outputs[0], pv.inputs['Emission Strength'])
+        links.new(ramp.outputs['Color'], pv.inputs['Emission Color'])
+        pv.inputs['Color'].default_value = (0.25, 0.25, 0.25, 1.0)
+    except KeyError:
+        pass
+    links.new(pv.outputs[0], out.inputs['Volume'])
+    return mat
+
+
 def sync_volumes(tree, obj, geo):
     """Create / update / remove the volume object. Returns True when fog volumes are shown by it."""
     name = obj.name + "_volume"
@@ -112,7 +155,11 @@ def sync_volumes(tree, obj, geo):
             coll.objects.link(vob)
         vob.parent = obj
         vob.hide_select = True
-        data.materials.append(_material())
+    mat = _fire_material() if any(v.name == 'flame' for v in vols) else _material()
+    if not vob.data.materials:
+        vob.data.materials.append(mat)
+    elif vob.data.materials[0] != mat:
+        vob.data.materials[0] = mat
     old = vob.data.filepath
     vob.data.filepath = path
     try:

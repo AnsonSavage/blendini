@@ -108,6 +108,15 @@ class PyroSolverSOP(SOP):
         Parm('wind', "Wind", 'vector'),
         Parm('opentop', "Open Top", 'bool', default=True,
              description="Smoke leaves through the top of the container instead of collecting there"),
+        Parm('fire', "Combustion (Fire)", 'bool', default=False,
+             description="Sources emit fuel that burns into heat, flame and smoke"),
+        Parm('fuel', "Source Fuel", 'float', default=3.0, min=0.0, soft_max=10.0, hide_when={'fire': False}),
+        Parm('burnrate', "Burn Rate", 'float', default=25.0, min=0.0, soft_max=60.0, hide_when={'fire': False}),
+        Parm('ignition', "Ignition Temperature", 'float', default=0.3, min=0.0, soft_max=2.0, hide_when={'fire': False}),
+        Parm('heat', "Heat Release", 'float', default=0.6, min=0.0, soft_max=10.0, hide_when={'fire': False}),
+        Parm('smoke', "Smoke from Burning", 'float', default=0.6, min=0.0, soft_max=5.0, hide_when={'fire': False}),
+        Parm('flamecooling', "Flame Height (cooling)", 'float', default=15.0, min=0.1, soft_max=50.0,
+             hide_when={'fire': False}, description="Higher values give shorter flames"),
     )
 
     def _grid(self, p):
@@ -173,8 +182,19 @@ class PyroSolverSOP(SOP):
         d, T, v = st['density'], st['temperature'], st['vel']
         solid = st.get('solid')
         # Sources.
-        d = np.maximum(d, src * p.sourcedensity) if p.sourcedensity > 0 else d
-        T = np.maximum(T, src * p.sourcetemp)
+        if p.fire:
+            fuel, flame = st['fuel'], st['flame']
+            fuel = np.maximum(fuel, src * p.fuel)
+            T = np.maximum(T, src * p.ignition * 1.5)
+            # Combustion: hot fuel burns into heat, flame and smoke.
+            burn = np.where(T > p.ignition, np.minimum(fuel, fuel * p.burnrate * dt), 0.0)
+            fuel = fuel - burn
+            T = T + burn * p.heat
+            d = d + burn * p.smoke
+            flame = np.maximum(flame * max(0.0, 1.0 - p.flamecooling * dt), np.clip(burn / max(dt, 1e-9) * 0.25, 0, 1))
+        else:
+            d = np.maximum(d, src * p.sourcedensity) if p.sourcedensity > 0 else d
+            T = np.maximum(T, src * p.sourcetemp)
         # Forces.
         v[..., 1] += (p.buoyancy * T - p.weight * d) * dt
         wind = np.asarray(p.wind, dtype=np.float64)
@@ -186,6 +206,10 @@ class PyroSolverSOP(SOP):
             N = _grad(mag, h)
             N /= np.maximum(np.linalg.norm(N, axis=-1, keepdims=True), 1e-9)
             v += p.vorticity * h * np.cross(N, w) * dt
+        if p.fire:
+            mask_src = d + st['flame']
+        else:
+            mask_src = d
         if p.turbulence > 0:
             from ..core import noise as _noise
             # The swirls are much bigger than a voxel: evaluate the curl noise on a coarser grid
@@ -195,13 +219,13 @@ class PyroSolverSOP(SOP):
             cres = tuple(np.maximum((res + k - 1) // k, 1))
             cidx = np.indices(cres).reshape(3, -1).T.astype(np.float64)
             cpos = st['origin'] + (cidx * k + 0.5) * h
-            cd = d[::k, ::k, ::k].reshape(-1) > 1e-4
+            cd = mask_src[::k, ::k, ::k].reshape(-1) > 1e-4
             coarse = np.zeros((len(cidx), 3))
             if cd.any():
                 coarse[cd] = _noise.curlnoise(cpos[cd] / max(p.turbscale, 1e-3)
                                               + np.array([0.0, -0.3, 0.0]) * st['time'])
             curl = _sample(coarse.reshape(cres + (3,)), st['idx'] / k)
-            mask = (d > 1e-3).reshape(-1, 1)
+            mask = (mask_src > 1e-3).reshape(-1, 1)
             v += (curl * mask).reshape(v.shape) * p.turbulence * dt
         if solid is not None:
             v[solid] = 0.0
@@ -213,6 +237,9 @@ class PyroSolverSOP(SOP):
         v = _sample(v, back).reshape(v.shape)
         d = _sample(d, back).reshape(d.shape)
         T = _sample(T, back).reshape(T.shape)
+        if p.fire:
+            st['fuel'] = _sample(fuel, back).reshape(fuel.shape)
+            st['flame'] = _sample(flame, back).reshape(flame.shape)
         v = project(v, h, max(p.pressureiters // 2, 1), solid)
         d *= max(0.0, 1.0 - p.dissipation * dt)
         T *= max(0.0, 1.0 - p.cooling * dt)
@@ -223,6 +250,9 @@ class PyroSolverSOP(SOP):
             fade = np.linspace(1.0, 0.0, 4)[None, :, None]
             d[:, -4:, :] *= fade
             T[:, -4:, :] *= fade
+            if p.fire:
+                st['flame'][:, -4:, :] *= fade
+                st['fuel'][:, -4:, :] *= fade
         st['density'], st['temperature'], st['vel'] = d, T, v
         st['time'] += dt
 
@@ -244,7 +274,8 @@ class PyroSolverSOP(SOP):
             res = tuple(grid.res)
             st = {'h': grid.voxelsize, 'density': np.zeros(res), 'temperature': np.zeros(res),
                   'vel': np.zeros(res + (3,)), 'time': 0.0, 'origin': grid.origin.copy(),
-                  'idx': np.indices(res).reshape(3, -1).T.astype(np.float64)}
+                  'idx': np.indices(res).reshape(3, -1).T.astype(np.float64),
+                  'fuel': np.zeros(res), 'flame': np.zeros(res)}
             st['solid'] = self._solid(col_geo, grid)
             state['sim'] = st
             state['frames'] = {}
@@ -265,7 +296,7 @@ class PyroSolverSOP(SOP):
                 for _ in range(sub):
                     self.step(st, src, dt, p)
                 frames[f] = (st['density'].astype(np.float32), st['temperature'].astype(np.float32),
-                             st['vel'].astype(np.float32))
+                             st['vel'].astype(np.float32), st['flame'].astype(np.float32) if p.fire else None)
                 state['last'] = f
                 # Keep memory bounded: drop the oldest cached frames.
                 if len(frames) > 240:
@@ -273,8 +304,10 @@ class PyroSolverSOP(SOP):
         if frame not in frames:
             state.clear()
             return self.cook(inputs, p, ctx)
-        d, T, v = frames[frame]
+        d, T, v, fl = frames[frame]
         out.volumes = [Volume('density', d.astype(np.float64), grid.origin, grid.voxelsize),
                        Volume('temperature', T.astype(np.float64), grid.origin, grid.voxelsize),
                        Volume('vel', v.astype(np.float64), grid.origin, grid.voxelsize)]
+        if fl is not None:
+            out.volumes.append(Volume('flame', fl.astype(np.float64), grid.origin, grid.voxelsize))
         return out

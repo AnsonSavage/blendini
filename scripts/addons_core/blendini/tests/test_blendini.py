@@ -688,6 +688,13 @@ class TestEverydaySops(unittest.TestCase):
                 self.assertEqual([v.name for v in out.volumes], ['density', 'temperature', 'vel'])
         self.assertEqual(len(heights), 2)
         self.assertGreater(heights[1], heights[0] + 0.05)
+        p.update(fire=True)
+        st = {}
+        for f in (1, 10):
+            out = REGISTRY['pyrosolver'].cook([src], p, CookContext(frame=f, time=(f - 1) / 24, state=st))
+        names = [v.name for v in out.volumes]
+        self.assertIn('flame', names)
+        self.assertGreater(out.volumes[names.index('flame')].data.max(), 0.5)
 
     def test_geometry_files_and_file_cache(self):
         import os
