@@ -113,6 +113,19 @@ def main():
             bpy.context.scene.frame_set(rng.randint(1, 30))
         leaked = [ob.name for ob in bpy.data.objects if any(ob.name.startswith(n + '_') for n in removed)]
         assert not leaked, leaked
+        # i@active = 0 pieces stay where they are.
+        from blendini.core.geometry import merge
+        from blendini.vex.wrangle import run_wrangle
+        from blendini.sops.modify import split_pieces
+        two = merge([cook_sop('box', size=(0.5, 0.5, 0.5), t=(0, 3, 0)), cook_sop('box', size=(0.5, 0.5, 0.5), t=(2, 3, 0))])
+        two, _ = run_wrangle('i@active = @P.x < 1.0 ? 1 : 0;', [two], run_over='point')
+        st = {}
+        ctx = CookContext(frame=25, time=1.0, state=st)
+        ctx.channels, ctx.ramps = {}, {}
+        out = REGISTRY['rbdsolver'].cook([two], default_parms('rbdsolver'), ctx)
+        heights = sorted((pc.P.mean(axis=0)[0], pc.P.mean(axis=0)[1]) for pc in split_pieces(out, 'name'))
+        _rbd_cleanup(st)
+        assert heights[0][1] < 1.0 and abs(heights[1][1] - 3.0) < 1e-4, heights
 
     def handle_bindings():
         from blendini.bl import handles

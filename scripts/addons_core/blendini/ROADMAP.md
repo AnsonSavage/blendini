@@ -85,6 +85,8 @@ and needs a real Blender session to confirm.
 - [x] Pyro-style smoke solver (stable fluids on native volumes: buoyancy, vorticity, turbulence)
 - [x] Fire: combustion in the Pyro Solver (fuel, burn, heat, flame field + fire material)
 - [x] FLIP liquid solver (collocated grid, free-surface pressure, FLIP/PIC blend, separation)
+- [x] RBD piece attributes: i@active (0 = static), f@density
+- [ ] RBD initial velocity (v@v): Blender's rigid body API has no velocity input
 - [ ] FLIP refinements: MAC grid, narrow band, surface tension, whitewater
 - [x] Viewport handle for the Transform SOP (translate arrows + rotate dials)
 - [x] More handles: Transform scale and pivot, primitives (center / size / radius), origins,

@@ -804,7 +804,11 @@ class RBDSolverSOP(SOP):
             rb.use_margin = True
             rb.collision_margin = p.margin
             vol = _hull_volume(local)
-            rb.mass = max(vol * p.density, 1e-4)
+            density = _piece_value(piece, 'density', p.density)
+            rb.mass = max(vol * density, 1e-4)
+            if _piece_value(piece, 'active', 1) == 0:
+                # Houdini's i@active = 0: the piece stays where it is (others still collide with it).
+                rb.type = 'PASSIVE'
             objs.append(ob.name)
             centers.append(c)
         statics = []
@@ -944,6 +948,15 @@ class RBDSolverSOP(SOP):
             g.P = local @ m[:3, :3].T + m[:3, 3]
             out_pieces.append(g)
         return merge(out_pieces)
+
+
+def _piece_value(piece, name, default):
+    """A per-piece number from the primitive (else point) attribute's first element."""
+    for cls in ('prim', 'point'):
+        arr = piece.attribs[cls].get(name)
+        if arr is not None and arr.dtype != object and len(arr) and arr.ndim == 1:
+            return float(arr[0])
+    return default
 
 
 def _hull_volume(geo):
