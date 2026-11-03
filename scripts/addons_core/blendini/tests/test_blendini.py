@@ -873,6 +873,22 @@ class TestEverydaySops(unittest.TestCase):
         back = cook_sop('transformpieces', [rest, xf])
         np.testing.assert_allclose(back.P, deformed.P, atol=1e-9)
 
+    def test_pyro_source_velocity(self):
+        from blendini.sops import REGISTRY, default_parms, CookContext
+        src = cook_sop('sphere', rad=(0.25, 0.25, 0.25), t=(-0.6, 0.5, 0))
+        moving, _ = run_wrangle('v@v = {3, 0, 0};', [src], run_over='point')
+
+        def centroid_x(s):
+            p = default_parms('pyrosolver')
+            p.update(voxelsize=0.12, pressureiters=8, turbulence=0)
+            st = {}
+            for f in (1, 16):
+                out = REGISTRY['pyrosolver'].cook([s], p, CookContext(frame=f, time=(f - 1) / 24, state=st))
+            d = out.volumes[0]
+            xs = d.origin[0] + (np.arange(d.res[0]) + 0.5) * d.voxelsize
+            return float((d.data.sum(axis=(1, 2)) * xs).sum() / d.data.sum())
+        self.assertGreater(centroid_x(moving), centroid_x(src) + 0.2)
+
     def test_skin(self):
         rows = Geometry.from_polys([[x, y, 0] for y in range(3) for x in range(4)],
                                    [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], closed=False)

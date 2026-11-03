@@ -161,7 +161,21 @@ class PyroSolverSOP(SOP):
                 src[sl] = np.maximum(src[sl], w)
         state['src_key'] = key
         state['src'] = src
+        state['src_vel'] = self._source_velocity(geo, grid, src)
         return src
+
+    @staticmethod
+    def _source_velocity(geo, grid, src):
+        """Velocity injected where the source is: a 'vel' volume, else the mean point 'v'."""
+        vel = next((v for v in geo.volumes if v.name == 'vel' and v.is_vector), None)
+        if vel is not None:
+            return vel.sample(grid.centers()).reshape(tuple(grid.res) + (3,))
+        v = geo.attribs[POINT].get('v')
+        if v is not None and v.dtype != object and np.asarray(v).ndim == 2 and len(v):
+            mean = np.asarray(v, dtype=np.float64).mean(axis=0)
+            if np.linalg.norm(mean) > 1e-9:
+                return np.broadcast_to(mean, tuple(grid.res) + (3,)).copy()
+        return None
 
     def _solid(self, geo, grid):
         if geo is None or geo.num_prims == 0:
@@ -177,9 +191,12 @@ class PyroSolverSOP(SOP):
             solid[near] = winding_numbers(geo.P, tris, C[near]) > 0.5
         return solid.reshape(tuple(grid.res))
 
-    def step(self, st, src, dt, p):
+    def step(self, st, src, dt, p, src_vel=None):
         h = st['h']
         d, T, v = st['density'], st['temperature'], st['vel']
+        if src_vel is not None:
+            w = np.clip(src, 0, 1)[..., None]
+            v[:] = v * (1 - w) + src_vel * w
         solid = st.get('solid')
         # Sources.
         if p.fire:
@@ -294,7 +311,7 @@ class PyroSolverSOP(SOP):
             dt = 1.0 / ctx.fps / sub
             for f in range(state['last'] + 1, frame + 1):
                 for _ in range(sub):
-                    self.step(st, src, dt, p)
+                    self.step(st, src, dt, p, state.get('src_vel'))
                 frames[f] = (st['density'].astype(np.float32), st['temperature'].astype(np.float32),
                              st['vel'].astype(np.float32), st['flame'].astype(np.float32) if p.fire else None)
                 state['last'] = f
