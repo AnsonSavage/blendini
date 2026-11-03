@@ -41,6 +41,7 @@ def main():
     blendini.register()
     from blendini.bl import cook, examples, selftest, ui
     from blendini.bl.tree import NODE_PREFIX
+    from blendini.sops import cook_sop
 
     def build_and_play():
         trees = examples.build_examples()
@@ -86,7 +87,7 @@ def main():
     def rbd_scene_lifecycle():
         # Regression: removing one rigid body scene while another exists crashed Blender, and
         # stepping a simulation from the frame change handler corrupted memory.
-        from blendini.sops import REGISTRY, default_parms, CookContext, cook_sop
+        from blendini.sops import REGISTRY, default_parms, CookContext
         from blendini.sops.blender_ops import _rbd_cleanup
         # Glue constraints must be freed before their Bullet bodies (crashed in about 1 of 4 runs).
         import random
@@ -251,6 +252,30 @@ def main():
             if target is not None:
                 bpy.data.objects.remove(target)
 
+    def instance_objects():
+        from blendini.bl.examples import _finish
+        mesh = bpy.data.meshes.new("itest_inst")
+        cookbox = cook_sop('box')
+        from blendini.bl.mesh_io import geo_to_mesh
+        geo_to_mesh(cookbox, mesh)
+        ob = bpy.data.objects.new("ItestInstance", mesh)
+        tree = bpy.data.node_groups.new("instance_test", "BlendiniSOPTree")
+        try:
+            g = tree.nodes.new(NODE_PREFIX + 'grid')
+            ins = tree.nodes.new(NODE_PREFIX + 'instance')
+            ins.p_object = ob.name
+            tree.links.new(g.outputs[0], ins.inputs[0])
+            _finish(tree, ins)
+            cook.cook_tree(tree)
+            geo = cook.node_geometry(ins)
+            assert len(geo.instances) == 1 and int((geo.attribs['point']['__inst'] == 0).sum()) == geo.num_points
+        finally:
+            target = tree.target
+            bpy.data.node_groups.remove(tree)
+            if target is not None:
+                bpy.data.objects.remove(target)
+            bpy.data.objects.remove(ob)
+
     def unregister():
         blendini.unregister()
 
@@ -264,6 +289,7 @@ def main():
     check("material slots from shop_materialpath", material_slots)
     check("digital assets (shared subnet definitions)", digital_assets)
     check("attribute paint commit", attribute_paint)
+    check("instance Blender objects by name", instance_objects)
     check("unregister", unregister)
     print("\n%d failure(s)" % len(failures))
     return 1 if failures else 0

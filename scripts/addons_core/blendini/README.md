@@ -14,7 +14,7 @@ Wrangle.*
 *Heightfield mask and scatter forest, a Volume Wrangle cloud, Pyro fire and smoke, and an
 L-system rendered as curves with a width attribute.*
 
-**Highlights:** 155 SOPs and a VEX interpreter with about 290 functions (structs, dicts,
+**Highlights:** 156 SOPs and a VEX interpreter with about 290 functions (structs, dicts,
 half-edges, point clouds, volumes). Also: Attribute and Volume VOPs, native volumes with
 smoke and fire rendering, a Pyro solver, Vellum cloth and hair, RBD with constraint networks,
 FLIP and PBF liquids, heightfields, For-Each, subnets, File Cache, and Houdini-style flags, TAB menu,
@@ -123,6 +123,7 @@ See [ROADMAP.md](ROADMAP.md) for what is done and what is planned.
 | Rendering curves with width | Displayed polylines also become a Blender Curves object (radius from `f@width`, colored by `Cd`), so they render like in Houdini |
 | Performance Monitor | *Show Cook Times* in the Network panel: each node's cook time next to it (red for the slowest) |
 | Digital assets (HDAs) | *Create Digital Asset* on a subnet: a shared definition (also a Blender asset) listed in the TAB menu; every instance updates when it is edited, promoted parameters stay per instance |
+| `s@instance` instancing | Instance SOP: points instance the Blender object they name (orient / N+up / pscale / scale) |
 | Network boxes, dots | Network Box (Blender frame) and Dot (reroute) in the TAB menu's Layout section |
 | SOP Solver, Vellum, RBD (Bullet), FLIP, Pyro | Solver (VEX), Vellum Cloth (PBD), RBD Bullet Solver, FLIP Solver or Fluid Solver (PBF) + Particle Fluid Surface, Pyro Solver (Smoke / Fire) |
 | VDB / volumes, Volume Wrangle | Native voxel volumes (Volume, Volume from Polygons, **Volume Wrangle** with `@density`, Convert Volume). Fog volumes render as smoke through a Blender Volume object (OpenVDB). OpenVDB through Geometry Nodes for Particle Fluid Surface and VDB Reshape |
@@ -155,7 +156,7 @@ See [ROADMAP.md](ROADMAP.md) for what is done and what is planned.
 | Volume    | Volume (fog / SDF / vector grid), **Volume from Polygons** (VDB from Polygons: SDF or fog), **Volume Wrangle** (VEX per voxel: `@density`, `v@vel`, `@P`, `@ix`; new `@names` create volumes), **Volume VOP** (the same with a VOP network), Volume Blur, Volume Rasterize Points (density and v), Convert Volume (surface nets iso surface). Fog volumes are shown and rendered as smoke (a Blender Volume object, OpenVDB file), SDFs as their surface |
 | Terrain   | HeightField, HeightField Noise (fBm / ridged), HeightField Erode (thermal + flow-based hydraulic), HeightField Mask by Feature (slope / height / direction / noise), HeightField Scatter (mask weighted, pscale / N / up for Copy to Points), HeightField Terrace, HeightField Blur |
 | Group     | Group Create (pattern / bounding box / normal / random / `@expression`), Group by Range, Group from Attribute Boundary, Group Transfer, Group Combine, Group Promote, Group Expand, Blast, Delete, Split (two outputs) |
-| Copy      | Copy to Points (orient, N/up, pscale, scale, piece variants, **Pack and Instance**), Pack, Unpack, Assemble, Copy and Transform, Point Replicate, Scatter, Points from Volume\* |
+| Copy      | **Instance** (instance Blender objects onto points by `s@instance` name, rendered as instances), Copy to Points (orient, N/up, pscale, scale, piece variants, **Pack and Instance**), Pack, Unpack, Assemble, Copy and Transform, Point Replicate, Scatter, Points from Volume\* |
 | VEX       | Attribute Wrangle (run over points / prims / vertices / detail / numbers), **Point Wrangle**, Primitive Wrangle, Detail Wrangle, **Attribute VOP** (visual VEX: Globals, Bind, Parameter, Ramp, math, logic / two-way switch, vector, noise and color VOPs; dive in with I; shows the generated VEX) |
 | Utility   | **Material** (assigns Blender materials by group: `shop_materialpath` becomes material slots), **File Cache** (Save to Disk per frame / Load from Disk: lossless .npz with attributes, groups, volumes and packed instances; `$F4 $OS $HIP` variables), File (.obj), Extract Centroid, **Subnetwork** + Subnet Input (dive in with I, up with U; promoted parameters readable inside with `ch()`), Merge (multi-input), Switch, Switch-If, Null, Output, Sort, Time Shift, **Block Begin / Block End (For-Each by pieces, count or feedback)** |
 | Blender   | Object Merge (meshes and curves, several objects / wildcards), Solidify\*, **Blender Modifier\*** (any modifier, including Geometry Nodes groups) |

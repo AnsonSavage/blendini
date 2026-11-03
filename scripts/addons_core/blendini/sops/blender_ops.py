@@ -1459,3 +1459,53 @@ class UVLayoutSOP(UVUnwrapSOP):
         q['angle'] = 66.0
         from . import ParmValues
         return super().cook(inputs, ParmValues(q), ctx)
+
+
+@register_sop
+class InstanceSOP(SOP):
+    id = 'instance'
+    label = "Instance"
+    category = 'Copy'
+    inputs = 1
+    input_labels = ("Points",)
+    icon = 'OUTLINER_OB_GROUP_INSTANCE'
+    time_dependent = True
+    description = ("Instance Blender objects onto points by name: a string point attribute (s@instance) names the "
+                   "object; orient / N+up / pscale / scale place it (packed, rendered as instances)")
+    parms = (
+        Parm('attrib', "Instance Attribute", 'string', default='instance'),
+        Parm('object', "Default Object", 'object',
+             description="Used for points without the attribute (or with an empty name)"),
+        Parm('evaluated', "Use Evaluated (Modified) Mesh", 'bool', default=True),
+    )
+
+    def cook(self, inputs, p, ctx):
+        from ..core.instances import instance_points
+        src = _in(inputs).copy()
+        if src.num_points == 0:
+            return src
+        name = p.attrib.strip() or 'instance'
+        names = src.attribs['point'].get(name)
+        if names is None or names.dtype != object:
+            names = np.full(src.num_points, '', dtype=object)
+        names = names.copy()
+        if p.object:
+            names[np.array([not str(v) for v in names.tolist()], dtype=bool)] = p.object
+        src.attribs['point'][name] = names
+        reader = ObjectMergeSOP()
+        from . import ParmValues
+        rp = ParmValues(xformtype='none', evaluated=p.evaluated)
+        sources, missing = {}, set()
+        for nm in sorted(set(str(v) for v in names.tolist()) - {''}):
+            ob = bpy.data.objects.get(nm.rsplit('/', 1)[-1])
+            if ob is None:
+                missing.add(nm)
+                continue
+            try:
+                sources[nm] = reader._read(ob, rp)
+            except CookError as ex:
+                ctx.warn(str(ex))
+        if missing:
+            ctx.warn("Instance: no Blender object named %s" % ", ".join(sorted(missing)[:5]))
+        return instance_points(src, sources, name)
+

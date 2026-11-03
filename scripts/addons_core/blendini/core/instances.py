@@ -114,3 +114,45 @@ def unpack(geo):
     for name in ('__inst', '__inst_rot', '__inst_scale'):
         rest.attribs[POINT].pop(name, None)
     return merge([rest] + pieces)
+
+
+def instance_points(geo, sources, attrib='instance'):
+    """Turn points whose string attribute names a source geometry into packed instances.
+
+    sources: {name: Geometry}. Orientation comes from orient / N+up, size from pscale and scale
+    (Copy to Points conventions). Points naming no known source stay plain points.
+    """
+    from ..sops.base import orient_matrices
+    names = geo.attribs[POINT].get(attrib)
+    if names is None or names.dtype != object or not sources:
+        return geo
+    out = geo.copy()
+    n = out.num_points
+    keys = [k for k in sorted(sources) if sources[k] is not None]
+    index = {k: i for i, k in enumerate(keys)}
+    base = len(out.instances)
+    inst = out.attribs[POINT].get('__inst')
+    inst = np.full(n, -1, dtype=np.int64) if inst is None else np.array(inst, dtype=np.int64)
+    hit = np.array([str(v) in index for v in names.tolist()], dtype=bool)
+    if not hit.any():
+        return geo
+    inst[hit] = [base + index[str(v)] for v in names[hit].tolist()]
+    out.instances = list(out.instances) + [sources[k] for k in keys]
+    R = orient_matrices(out)
+    pa = out.attribs[POINT]
+    s = np.ones((n, 3))
+    if 'pscale' in pa and pa['pscale'].dtype != object:
+        s *= np.asarray(pa['pscale'], dtype=np.float64).reshape(n, -1)[:, :1]
+    if 'scale' in pa and pa['scale'].dtype != object and np.asarray(pa['scale']).ndim == 2:
+        s *= pa['scale']
+    M = R * s[:, None, :]
+    old_rot = pa.get('__inst_rot')
+    old_scale = pa.get('__inst_scale')
+    pa['__inst'] = inst
+    set_instance_matrices(out, M)
+    if old_rot is not None and old_scale is not None:
+        # Keep the transforms of points that were already packed.
+        keep = ~hit & (inst >= 0)
+        pa['__inst_rot'][keep] = old_rot[keep]
+        pa['__inst_scale'][keep] = old_scale[keep]
+    return out

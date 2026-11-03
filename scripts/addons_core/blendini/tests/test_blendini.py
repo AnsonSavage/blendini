@@ -847,6 +847,21 @@ class TestEverydaySops(unittest.TestCase):
         self.assertAlmostEqual(float(m.P[c, 1]), 1.0)
         self.assertEqual(float(m.P[0, 1]), 0.0)
 
+    def test_instance_points(self):
+        from blendini.core.instances import instance_points, unpack
+        pts, _ = run_wrangle('s@instance = @ptnum % 2 ? "cube" : "ball"; @pscale = 0.5; if (@ptnum == 0) s@instance = "x";',
+                             [cook_sop('grid', rows=2, cols=2)], run_over='point')
+        out = instance_points(pts, {'cube': cook_sop('box'), 'ball': cook_sop('sphere')})
+        np.testing.assert_array_equal(out.attribs['point']['__inst'], [-1, 1, 0, 1])
+        u = unpack(out)
+        self.assertEqual(u.num_points, 1 + 2 * 8 + cook_sop('sphere').num_points)
+        from blendini.sops.modify import split_pieces
+        cubes = [pc for pc in split_pieces(u, '') if pc.num_points == 8]
+        self.assertEqual(len(cubes), 2)
+        diag = float(np.linalg.norm(cubes[0].P.max(axis=0) - cubes[0].P.min(axis=0)))
+        self.assertLessEqual(diag, 0.5 * np.sqrt(3) * 1.4143)          # scaled to 0.5 (any rotation)
+        self.assertGreater(diag, 0.5)
+
     def test_skin(self):
         rows = Geometry.from_polys([[x, y, 0] for y in range(3) for x in range(4)],
                                    [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], closed=False)
