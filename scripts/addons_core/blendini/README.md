@@ -14,7 +14,7 @@ Wrangle.*
 *Heightfield mask and scatter forest, a Volume Wrangle cloud, Pyro fire and smoke, and an
 L-system rendered as curves with a width attribute.*
 
-**Highlights:** 161 SOPs and a VEX interpreter with about 290 functions (structs, dicts,
+**Highlights:** 161 SOPs and a VEX interpreter with about 300 functions (structs, dicts,
 half-edges, point clouds, volumes). Also: Attribute and Volume VOPs, native volumes with
 smoke and fire rendering, a Pyro solver, Vellum cloth and hair, RBD with constraint networks,
 FLIP and PBF liquids, heightfields, For-Each, subnets, File Cache, and Houdini-style flags, TAB menu,
