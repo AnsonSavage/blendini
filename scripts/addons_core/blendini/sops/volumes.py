@@ -318,3 +318,114 @@ class VolumeVOPSOP(VolumeWrangleSOP):
         if not p.get('snippet'):
             return _in(inputs).copy()
         return VolumeWrangleSOP.cook(self, inputs, p, ctx)
+
+
+@register_sop
+class AttribFromVolumeSOP(SOP):
+    id = 'attribfromvolume'
+    label = "Attribute from Volume"
+    category = 'Volume'
+    inputs = 2
+    input_labels = ("Points", "Volumes")
+    icon = 'VOLUME_DATA'
+    description = "Sample volumes of the second input at the points into attributes of the same name"
+    parms = (
+        Parm('volumes', "Volumes (names)", 'string', default='*'),
+        Parm('prefix', "Attribute Prefix", 'string', default=''),
+    )
+
+    def cook(self, inputs, p, ctx):
+        import fnmatch
+        geo = _in(inputs, 0).copy()
+        vols = _in(inputs, 1).volumes
+        if not vols:
+            ctx.warn("Attribute from Volume: the second input has no volumes")
+            return geo
+        pats = (p.volumes.strip() or '*').split()
+        for v in vols:
+            if any(fnmatch.fnmatchcase(v.name, pat) for pat in pats) and geo.num_points:
+                geo.attribs[POINT][p.prefix + v.name] = v.sample(geo.P)
+        return geo
+
+
+@register_sop
+class VolumeTrailSOP(SOP):
+    id = 'volumetrail'
+    label = "Volume Trail"
+    category = 'Volume'
+    inputs = 2
+    input_labels = ("Start Points", "Velocity Volume")
+    icon = 'FORCE_WIND'
+    description = "Streamlines: polylines tracing the points through a vector volume (vel)"
+    parms = (
+        Parm('field', "Velocity Field", 'string', default='vel'),
+        Parm('steps', "Steps", 'int', default=30, min=1, max=1000),
+        Parm('stepsize', "Time Step", 'float', default=0.05, min=1e-4, soft_max=1.0),
+    )
+
+    def cook(self, inputs, p, ctx):
+        pts = _in(inputs, 0)
+        vols = _in(inputs, 1).volumes
+        vel = next((v for v in vols if v.name == p.field.strip() and v.is_vector), None)
+        out = Geometry()
+        if vel is None:
+            raise CookError("Volume Trail: no vector volume named '%s' on the second input" % p.field)
+        if pts.num_points == 0:
+            return out
+        X = pts.P.copy()
+        trail = [X.copy()]
+        for _ in range(p.steps):
+            # Midpoint (RK2) integration.
+            k1 = vel.sample(X)
+            k2 = vel.sample(X + k1 * p.stepsize * 0.5)
+            X = X + k2 * p.stepsize
+            trail.append(X.copy())
+        T = np.stack(trail, axis=1)          # (n, steps+1, 3)
+        n, m = T.shape[:2]
+        out.P = T.reshape(-1, 3)
+        idx = np.arange(n * m).reshape(n, m)
+        out.add_prims_flat(np.full(n, m), idx.ravel(), closed=False)
+        out.attribs[POINT]['speed'] = np.linalg.norm(vel.sample(out.P), axis=1)
+        return out
+
+
+@register_sop
+class VolumeSliceSOP(SOP):
+    id = 'volumeslice'
+    label = "Volume Slice"
+    category = 'Volume'
+    inputs = 1
+    icon = 'MESH_PLANE'
+    description = "A plane through a volume, colored by its values (inspect fields like Houdini's slice)"
+    parms = (
+        Parm('volume', "Volume", 'string', default='density'),
+        Parm('axis', "Plane", 'enum', items=[('z', "XY (Z slice)", ""), ('x', "YZ (X slice)", ""), ('y', "ZX (Y slice)", "")]),
+        Parm('offset', "Position (0-1)", 'float', default=0.5, min=0.0, max=1.0),
+    )
+
+    def cook(self, inputs, p, ctx):
+        from .attribs import _infra_red
+        from .generators import grid_quads
+        src = _in(inputs)
+        v = next((x for x in src.volumes if x.name == p.volume.strip()), src.volumes[0] if src.volumes else None)
+        if v is None:
+            raise CookError("Volume Slice: no volumes on the input")
+        lo, hi = v.bounds()
+        a = {'x': 0, 'y': 1, 'z': 2}[p.axis]
+        u, w = [k for k in range(3) if k != a]
+        res = v.res
+        nu, nw = int(res[u]) + 1, int(res[w]) + 1
+        U, W = np.meshgrid(np.linspace(lo[u], hi[u], nu), np.linspace(lo[w], hi[w], nw))
+        P = np.zeros((U.size, 3))
+        P[:, u], P[:, w] = U.ravel(), W.ravel()
+        P[:, a] = lo[a] + (hi[a] - lo[a]) * p.offset
+        out = Geometry.from_polys(P)
+        q = grid_quads(nu, nw)
+        out.add_prims_flat(np.full(len(q), 4), q.ravel())
+        vals = v.sample(P)
+        if vals.ndim == 2:
+            vals = np.linalg.norm(vals, axis=1)
+        out.attribs[POINT][v.name] = vals
+        lo_v, hi_v = float(vals.min()), float(vals.max())
+        out.attribs[POINT]['Cd'] = _infra_red((vals - lo_v) / (hi_v - lo_v if hi_v > lo_v else 1.0))
+        return out

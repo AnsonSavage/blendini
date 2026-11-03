@@ -935,6 +935,18 @@ class TestEverydaySops(unittest.TestCase):
         REGISTRY['vellum'].cook([cloth(8, y=1.5)], p, CookContext(frame=8, time=7 / 24, state=st))
         self.assertNotEqual(id(st['sim']), sim)                         # upstream edit restarts
 
+    def test_volume_sample_trail_slice(self):
+        v = cook_sop('volumewrangle', [cook_sop('volume', size=(4.0, 4.0, 4.0), voxelsize=0.2, usebounds=False)],
+                     snippet='@density = 1 - length(@P) / 2; v@vel = set(-@P.z, 0, @P.x);')
+        a = cook_sop('attribfromvolume', [cook_sop('grid', rows=5, cols=5, size=(2.0, 2.0)), v])
+        self.assertIn('vel', a.attribs['point'])
+        t = cook_sop('volumetrail', [Geometry.from_polys([[1.0, 0, 0]]), v], steps=126, stepsize=0.05)
+        r = np.linalg.norm(t.P[:, [0, 2]], axis=1)
+        self.assertLess(float(np.ptp(r)), 0.02)                         # circles around the Y axis
+        np.testing.assert_allclose(t.P[-1], [1, 0, 0], atol=0.05)       # one full turn
+        s = cook_sop('volumeslice', [v])
+        self.assertEqual(s.num_prims, 400)
+
     def test_skin(self):
         rows = Geometry.from_polys([[x, y, 0] for y in range(3) for x in range(4)],
                                    [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], closed=False)

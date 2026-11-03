@@ -27,7 +27,7 @@ and needs a real Blender session to confirm.
 - [x] Driver expressions on parameters evaluated through VEX (`#frame * 0.1`, `$F`, `$T`, `$FPS`), keyframes
 - [x] Unconnected inputs read as empty geometry; wrong-typed calls report the function and argument types
 
-### SOPs (158)
+### SOPs (161)
 - [x] Primitives, manipulation, polygon, attribute, group, copy/instancing, terrain, utility,
       Blender-backed (modifiers, bmesh, BVH, Bullet, OpenVDB) — see README for the full list
 - [x] Simulations: Solver (VEX), Vellum-style cloth (PBD), RBD (Bullet), FLIP and PBF liquids + meshing, Pyro smoke and fire,
@@ -84,7 +84,8 @@ and needs a real Blender session to confirm.
 - [x] Arrays of structs, struct methods (`obj->method()`, members visible inside methods)
 - [x] Curve SOP (polygon, Catmull-Rom, Bézier — evaluated to polylines)
 - [x] Volumes as a native primitive type: dense grids on the geometry (fog, SDF, vector), Volume,
-      Volume from Polygons, Volume Wrangle, Volume VOP, Volume Blur, Rasterize Points, Convert Volume (surface
+      Volume from Polygons, Volume Wrangle, Volume VOP, Volume Blur, Attribute from Volume, Volume Trail,
+      Volume Slice, Rasterize Points, Convert Volume (surface
       nets), VEX volumesample / volumegradient / ..., smoke display and rendering via OpenVDB files
 - [ ] Native NURBS / Bézier primitives, sparse (VDB-style) volumes
 - [x] RBD glue constraints (breakable FIXED constraints between neighbouring pieces)
