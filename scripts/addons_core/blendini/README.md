@@ -306,6 +306,12 @@ there is no Python SOP.
 
 ## Not done yet (ideas)
 
-NURBS and Bézier primitives, sparse (VDB-style) volumes, a full DOP context (constraints, FLIP meshing, Pyro), more VOP types, more viewport
-handles/states, and a multi-line code editor inside the parameter
-pane. Today the code is edited in Blender's Text Editor, which recooks live.
+- Native NURBS / Bézier primitives (the Curve SOP evaluates them to polylines) and sparse, VDB-style
+  volumes (Blendini's volumes are dense grids).
+- A full DOP context: today each simulation is a single SOP. FLIP runs on a collocated grid, with no
+  MAC grid, narrow band or whitewater. Vellum has no tearing. RBD can't set an initial velocity,
+  because Blender's rigid body API has no velocity input.
+- A multi-line code editor in the parameter pane: VEX is edited in Blender's Text Editor, which
+  recooks live (Ctrl+Enter).
+- The interactive UI (panels, hotkeys, overlays, gizmos) is tested with mocks and in headless
+  Blender, so it still needs a pass in a real Blender session.
