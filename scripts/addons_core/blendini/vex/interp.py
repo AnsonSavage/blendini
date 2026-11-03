@@ -366,9 +366,9 @@ class Interpreter:
         if k == 'attr':
             return self.read_attr(node)
         if k == 'binop':
-            return self.binop(node, mask)
+            return self.binop(node, mask, hint)
         if k == 'unop':
-            v = self.ev(node.x, mask)
+            v = self.ev(node.x, mask, hint if node.op == '-' and hint in VECTORS else None)
             if node.op == '-':
                 if v.t == 'string' or is_array(v.t):
                     raise VexError("Can't negate %s" % v.t)
@@ -496,7 +496,7 @@ class Interpreter:
             return convert(v, t)
         return convert(v, t)
 
-    def binop(self, node, mask):
+    def binop(self, node, mask, hint=None):
         op = node.op
         if op == '&&':
             a = truthy(self.ev(node.l, mask))
@@ -506,8 +506,11 @@ class Interpreter:
             a = truthy(self.ev(node.l, mask))
             b = truthy(self.ev(node.r, mask & ~a))
             return V('int', (a | b).astype(np.int64))
-        a = self.ev(node.l, mask)
-        b = self.ev(node.r, mask)
+        # Return type overloading reaches through arithmetic, as in VEX: in
+        # "@P += rand(@ptnum) - 0.5" rand() returns a vector.
+        sub = hint if op in ('+', '-', '*', '/', '%') and hint in VECTORS else None
+        a = self.ev(node.l, mask, sub)
+        b = self.ev(node.r, mask, sub)
         return arith(op, a, b, node.line)
 
     def assign(self, node, mask):

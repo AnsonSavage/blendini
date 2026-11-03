@@ -261,6 +261,14 @@ class TestVex(unittest.TestCase):
                          ('piece', 3, 10, 255, 1))
         np.testing.assert_allclose(pa['pos'][0], [1, 2, 3])
 
+    def test_return_type_through_arithmetic(self):
+        g = _grid(4)
+        out, _ = _wrangle('@P += rand(@ptnum) - 0.5; v@n = -noise(@P * 3.1); f@s = rand(@ptnum) * 2;', g)
+        d = out.P - g.P
+        self.assertGreater(np.abs(d[:, 0] - d[:, 1]).max(), 1e-6)    # vector rand: components differ
+        self.assertEqual(out.attribs['point']['n'].shape, (g.num_points, 3))
+        self.assertEqual(out.attribs['point']['s'].shape, (g.num_points,))
+
     def test_strings(self):
         out, msgs = _wrangle('s@name = sprintf("piece%d", @ptnum); printf("%s\\n", s@name);')
         self.assertEqual(out.attribs['point']['name'][3], 'piece3')
