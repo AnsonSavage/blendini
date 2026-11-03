@@ -947,6 +947,14 @@ class TestEverydaySops(unittest.TestCase):
         s = cook_sop('volumeslice', [v])
         self.assertEqual(s.num_prims, 400)
 
+    def test_sort_modes(self):
+        g, _ = run_wrangle('f@key = -@ptnum;', [cook_sop('line', points=6)], run_over='point')
+        np.testing.assert_array_equal(cook_sop('sort', [g], ptsort='attrib', attrib='key').attribs['point']['key'],
+                                      [-5, -4, -3, -2, -1, 0])
+        np.testing.assert_array_equal(cook_sop('sort', [g], ptsort='shift', offset=2).attribs['point']['key'],
+                                      [-2, -3, -4, -5, 0, -1])
+        np.testing.assert_allclose(cook_sop('sort', [g], ptsort='proximity', point=(0, 1.0, 0)).P[0, 1], 1.0)
+
     def test_skin(self):
         rows = Geometry.from_polys([[x, y, 0] for y in range(3) for x in range(4)],
                                    [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], closed=False)

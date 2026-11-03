@@ -679,28 +679,54 @@ class SortSOP(SOP):
     parms = (
         Parm('ptsort', "Point Sort", 'enum', items=[
             ('none', "No Change", ""), ('x', "By X", ""), ('y', "By Y", ""), ('z', "By Z", ""), ('random', "Random", ""),
-            ('reverse', "Reverse", ""),
+            ('reverse', "Reverse", ""), ('attrib', "By Attribute", ""), ('proximity', "Proximity to Point", ""),
+            ('vector', "Along Vector", ""), ('shift', "Shift (offset)", ""),
         ]),
         Parm('primsort', "Primitive Sort", 'enum', items=[
             ('none', "No Change", ""), ('x', "By X", ""), ('y', "By Y", ""), ('z', "By Z", ""), ('random', "Random", ""),
-            ('reverse', "Reverse", ""),
+            ('reverse', "Reverse", ""), ('attrib', "By Attribute", ""), ('proximity', "Proximity to Point", ""),
+            ('vector', "Along Vector", ""), ('shift', "Shift (offset)", ""),
         ]),
         Parm('seed', "Seed", 'int', default=0),
+        Parm('attrib', "Sort Attribute", 'string', default='', description="For 'By Attribute' (first component)"),
+        Parm('point', "Point / Vector", 'vector', default=(0.0, 0.0, 0.0),
+             description="Origin for 'Proximity to Point', direction for 'Along Vector'"),
+        Parm('offset', "Shift Offset", 'int', default=1),
+        Parm('reverse', "Reverse Result", 'bool', default=False),
     )
 
-    def _order(self, kind, pos, seed):
+    def _order(self, kind, pos, seed, p=None, values=None):
         n = len(pos)
         if kind == 'none':
             return None
         if kind in ('x', 'y', 'z'):
-            return np.argsort(pos[:, 'xyz'.index(kind)], kind='stable')
-        if kind == 'random':
-            return np.random.RandomState(int(seed) & 0x7FFFFFFF).permutation(n)
-        return np.arange(n)[::-1]
+            order = np.argsort(pos[:, 'xyz'.index(kind)], kind='stable')
+        elif kind == 'random':
+            order = np.random.RandomState(int(seed) & 0x7FFFFFFF).permutation(n)
+        elif kind == 'attrib':
+            if values is None:
+                raise CookError("Sort: no attribute '%s' to sort by" % (p.attrib if p is not None else ''))
+            key = np.asarray(values)
+            if key.dtype == object:
+                key = np.array([str(x) for x in key.tolist()])
+            elif key.ndim > 1:
+                key = key.reshape(n, -1)[:, 0]
+            order = np.argsort(key, kind='stable')
+        elif kind == 'proximity':
+            order = np.argsort(np.linalg.norm(pos - np.asarray(p.point, dtype=np.float64), axis=1), kind='stable')
+        elif kind == 'vector':
+            order = np.argsort(pos @ np.asarray(p.point, dtype=np.float64), kind='stable')
+        elif kind == 'shift':
+            order = np.roll(np.arange(n), -int(p.offset)) if n else np.arange(0)
+        else:
+            order = np.arange(n)[::-1]
+        if p is not None and p.get('reverse') and kind != 'reverse':
+            order = order[::-1]
+        return order
 
     def cook(self, inputs, p, ctx):
         geo = _in(inputs).copy()
-        order = self._order(p.ptsort, geo.P, p.seed)
+        order = self._order(p.ptsort, geo.P, p.seed, p, geo.attribs[POINT].get(p.attrib.strip()))
         if order is not None:
             inv = np.empty_like(order)
             inv[order] = np.arange(len(order))
@@ -709,7 +735,7 @@ class SortSOP(SOP):
             for name, g in list(geo.groups[POINT].items()):
                 geo.groups[POINT][name] = g[order]
             geo.vtx_point = inv[geo.vtx_point]
-        order = self._order(p.primsort, geo.prim_centers(), p.seed)
+        order = self._order(p.primsort, geo.prim_centers(), p.seed, p, geo.attribs[PRIM].get(p.attrib.strip()))
         if order is not None and geo.num_prims:
             sizes = geo.prim_sizes()
             vorder = np.concatenate([np.arange(geo.prim_start[i], geo.prim_start[i + 1]) for i in order])
