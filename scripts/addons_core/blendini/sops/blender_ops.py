@@ -895,3 +895,152 @@ class UVUnwrapSOP(SOP):
                     o.select_set(True)
             if prev_active is not None and view_layer.objects.get(prev_active.name) is not None:
                 view_layer.objects.active = prev_active
+
+
+# ----------------------------------------------------------------------------
+# OpenVDB signed distance fields (Blender 5 Geometry Nodes grid nodes)
+
+
+def _new_sdf_group(name):
+    ng = bpy.data.node_groups.new(name, 'GeometryNodeTree')
+    ng.interface.new_socket(name="Geometry", in_out='INPUT', socket_type='NodeSocketGeometry')
+    ng.interface.new_socket(name="Geometry", in_out='OUTPUT', socket_type='NodeSocketGeometry')
+    return ng
+
+
+def _sdf_node(ng, kind):
+    try:
+        return ng.nodes.new(kind)
+    except RuntimeError:
+        bpy.data.node_groups.remove(ng)
+        raise CookError("This Blender has no '%s' node (OpenVDB SDF nodes need Blender 5.0+)" % kind)
+
+
+def _run_group(geo, ng, extra=()):
+    def settings(mod, others):
+        mod.node_group = ng
+        for node in ng.nodes:
+            if node.bl_idname == 'GeometryNodeObjectInfo' and others:
+                node.inputs['Object'].default_value = others[0]
+    try:
+        return apply_modifier(geo, 'NODES', settings, extra_objects=extra)
+    finally:
+        bpy.data.node_groups.remove(ng)
+
+
+@register_sop
+class VDBReshapeSOP(SOP):
+    id = 'vdbreshape'
+    label = "VDB Reshape / Smooth SDF"
+    category = 'Polygon'
+    inputs = 1
+    icon = 'VOLUME_DATA'
+    description = "Polygons -> signed distance field -> dilate/erode, smooth, fillet -> polygons (OpenVDB)"
+    parms = (
+        Parm('voxelsize', "Voxel Size", 'float', default=0.05, min=0.001, soft_max=1),
+        Parm('offset', "Offset (+dilate / -erode)", 'float', default=0.0, soft_min=-1, soft_max=1),
+        Parm('filter', "Smooth Filter", 'enum', items=[('mean', "Mean", ""), ('laplacian', "Laplacian Flow", ""),
+                                                      ('median', "Median", ""), ('none', "None", "")]),
+        Parm('iterations', "Smooth Iterations", 'int', default=2, min=0, max=50, hide_when={'filter': 'none'}),
+        Parm('width', "Filter Width (voxels)", 'int', default=1, min=1, max=10, hide_when={'filter': ('laplacian', 'none')}),
+        Parm('fillet', "Fillet Iterations", 'int', default=0, min=0, max=50,
+             description="Round off concave corners"),
+        Parm('adaptivity', "Adaptivity", 'float', default=0.0, min=0, max=1),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs)
+        if geo.num_prims == 0:
+            return Geometry()
+        lo, hi = geo.bbox()
+        cells = np.prod(np.maximum((hi - lo) / max(p.voxelsize, 1e-4), 1))
+        if cells > 64e6:
+            raise CookError("Voxel size too small for this geometry (%.0fM voxels)" % (cells / 1e6))
+        ng = _new_sdf_group("_blendini_vdb")
+        gin = next(n for n in ng.nodes if n.bl_idname == 'NodeGroupInput') if any(
+            n.bl_idname == 'NodeGroupInput' for n in ng.nodes) else ng.nodes.new('NodeGroupInput')
+        gout = ng.nodes.new('NodeGroupOutput')
+        to_sdf = _sdf_node(ng, 'GeometryNodeMeshToSDFGrid')
+        to_sdf.inputs['Voxel Size'].default_value = max(p.voxelsize, 1e-4)
+        to_sdf.inputs['Band Width'].default_value = int(max(3, p.iterations * p.width + 3 + abs(p.offset) / max(p.voxelsize, 1e-4)))
+        ng.links.new(gin.outputs[0], to_sdf.inputs['Mesh'])
+        last = to_sdf.outputs[0]
+        if p.offset:
+            off = _sdf_node(ng, 'GeometryNodeSDFGridOffset')
+            off.inputs['Distance'].default_value = p.offset
+            ng.links.new(last, off.inputs['Grid'])
+            last = off.outputs[0]
+        if p.filter != 'none' and p.iterations > 0:
+            kind = {'mean': 'GeometryNodeSDFGridMean', 'laplacian': 'GeometryNodeSDFGridLaplacian',
+                    'median': 'GeometryNodeSDFGridMedian'}[p.filter]
+            f = _sdf_node(ng, kind)
+            f.inputs['Iterations'].default_value = p.iterations
+            if 'Width' in f.inputs:
+                f.inputs['Width'].default_value = p.width
+            ng.links.new(last, f.inputs['Grid'])
+            last = f.outputs[0]
+        if p.fillet > 0:
+            fil = _sdf_node(ng, 'GeometryNodeSDFGridFillet')
+            fil.inputs['Iterations'].default_value = p.fillet
+            ng.links.new(last, fil.inputs['Grid'])
+            last = fil.outputs[0]
+        to_mesh = _sdf_node(ng, 'GeometryNodeGridToMesh')
+        to_mesh.inputs['Threshold'].default_value = 0.0
+        to_mesh.inputs['Adaptivity'].default_value = p.adaptivity
+        ng.links.new(last, to_mesh.inputs['Grid'])
+        ng.links.new(to_mesh.outputs[0], gout.inputs[0])
+        return _run_group(geo, ng)
+
+
+@register_sop
+class VDBCombineSOP(SOP):
+    id = 'vdbcombine'
+    label = "VDB Combine (SDF Boolean)"
+    category = 'Polygon'
+    inputs = 2
+    input_labels = ("A", "B")
+    icon = 'MOD_BOOLEAN'
+    description = "Voxel based boolean of two closed surfaces through OpenVDB signed distance fields"
+    parms = (
+        Parm('operation', "Operation", 'enum', items=[('UNION', "Union", ""), ('INTERSECT', "Intersect", ""),
+                                                     ('DIFFERENCE', "Subtract (A - B)", "")]),
+        Parm('voxelsize', "Voxel Size", 'float', default=0.05, min=0.001, soft_max=1),
+        Parm('smooth', "Smooth Iterations", 'int', default=0, min=0, max=20),
+    )
+
+    def cook(self, inputs, p, ctx):
+        a, b = _in(inputs, 0), _in(inputs, 1)
+        if a.num_prims == 0 or b.num_prims == 0:
+            return a.copy() if b.num_prims == 0 else (b.copy() if p.operation == 'UNION' else Geometry())
+        ng = _new_sdf_group("_blendini_vdbcombine")
+        gin = ng.nodes.new('NodeGroupInput')
+        gout = ng.nodes.new('NodeGroupOutput')
+        info = ng.nodes.new('GeometryNodeObjectInfo')
+        info.transform_space = 'RELATIVE'
+        sdf_a = _sdf_node(ng, 'GeometryNodeMeshToSDFGrid')
+        sdf_b = _sdf_node(ng, 'GeometryNodeMeshToSDFGrid')
+        for s in (sdf_a, sdf_b):
+            s.inputs['Voxel Size'].default_value = max(p.voxelsize, 1e-4)
+            s.inputs['Band Width'].default_value = 3 + p.smooth
+        boolean = _sdf_node(ng, 'GeometryNodeSDFGridBoolean')
+        try:
+            boolean.operation = p.operation
+        except (AttributeError, TypeError):
+            pass
+        ng.links.new(gin.outputs[0], sdf_a.inputs['Mesh'])
+        ng.links.new(info.outputs['Geometry'], sdf_b.inputs['Mesh'])
+        enabled = [s for s in boolean.inputs if s.enabled]
+        # Difference: 'Grid 1' minus the multi-input; union / intersect: one multi-input for both.
+        ng.links.new(sdf_a.outputs[0], enabled[0])
+        ng.links.new(sdf_b.outputs[0], enabled[-1])
+        last = boolean.outputs[0]
+        if p.smooth > 0:
+            f = _sdf_node(ng, 'GeometryNodeSDFGridMean')
+            f.inputs['Iterations'].default_value = p.smooth
+            ng.links.new(last, f.inputs['Grid'])
+            last = f.outputs[0]
+        to_mesh = _sdf_node(ng, 'GeometryNodeGridToMesh')
+        to_mesh.inputs['Threshold'].default_value = 0.0  # the zero level set is the surface
+        ng.links.new(last, to_mesh.inputs['Grid'])
+        ng.links.new(to_mesh.outputs[0], gout.inputs[0])
+        return _run_group(a, ng, extra=[b])
