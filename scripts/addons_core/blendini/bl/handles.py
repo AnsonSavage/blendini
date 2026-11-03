@@ -2,10 +2,11 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-"""Houdini style viewport handle: translate arrows for the active Transform SOP.
+"""Houdini style viewport handle: translate arrows and rotate dials for the active Transform SOP.
 
 Select the network's output object; when the active node of its network is a Transform SOP,
-three arrows appear at the pivot. Dragging them edits the node's Translate parameter.
+three arrows appear at the pivot (they edit Translate) and three dials at the transformed
+position (they edit Rotate).
 All callbacks are defensive: if anything is missing the handle simply isn't shown.
 """
 
@@ -61,6 +62,20 @@ class BLENDINI_GGT_transform(bpy.types.GizmoGroup):
             gz.scale_basis = 1.2
             gz.target_set_handler("offset", get=self._getter(axis), set=self._setter(axis))
             self.arrows.append(gz)
+        self.dials = []
+        for axis in range(3):
+            gz = self.gizmos.new("GIZMO_GT_dial_3d")
+            gz.color = AXIS_COLORS[axis]
+            gz.color_highlight = (1.0, 1.0, 0.6)
+            gz.alpha = 0.6
+            gz.scale_basis = 0.8
+            gz.line_width = 2.0
+            try:
+                gz.draw_options = {'ANGLE_VALUE'}
+            except (TypeError, ValueError):
+                pass
+            gz.target_set_handler("offset", get=self._rot_getter(axis), set=self._rot_setter(axis))
+            self.dials.append(gz)
 
     @staticmethod
     def _getter(axis):
@@ -86,15 +101,49 @@ class BLENDINI_GGT_transform(bpy.types.GizmoGroup):
                 pass
         return set_value
 
+    @staticmethod
+    def _rot_getter(axis):
+        import math
+
+        def get():
+            _tree, node = active_transform_node(bpy.context)
+            try:
+                return math.radians(float(node.p_r[axis])) if node is not None else 0.0
+            except (ReferenceError, AttributeError):
+                return 0.0
+        return get
+
+    @staticmethod
+    def _rot_setter(axis):
+        import math
+
+        def set_value(value):
+            _tree, node = active_transform_node(bpy.context)
+            if node is None:
+                return
+            try:
+                r = list(node.p_r)
+                r[axis] = math.degrees(value)
+                node.p_r = r
+            except (ReferenceError, AttributeError, TypeError):
+                pass
+        return set_value
+
     def draw_prepare(self, context):
         tree, node = active_transform_node(context)
+        gizmos = list(getattr(self, 'arrows', [])) + list(getattr(self, 'dials', []))
         if node is None or tree.target is None:
-            for gz in getattr(self, 'arrows', []):
+            for gz in gizmos:
                 gz.hide = True
             return
         for axis, gz in enumerate(self.arrows):
             gz.hide = False
             gz.matrix_basis = axis_matrix(tree.target.matrix_world, node.p_p, axis)
+        # Dials sit at the transformed position (pivot + translate).
+        center = [node.p_p[i] + node.p_t[i] for i in range(3)]
+        for axis, gz in enumerate(self.dials):
+            gz.hide = False
+            gz.matrix_basis = axis_matrix(tree.target.matrix_world, center, axis)
 
 
 classes = (BLENDINI_GGT_transform,)
