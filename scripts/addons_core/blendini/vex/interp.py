@@ -48,6 +48,7 @@ class Interpreter:
     def __init__(self, program, ctx, n):
         self.program = program
         self.functions = program.functions
+        self.structs = program.a.get('structs', {})
         self.ctx = ctx
         self.n = n
         self.scopes = [_constants(), {}]
@@ -67,8 +68,54 @@ class Interpreter:
                 return scope
         return None
 
+    # -- structs (one SIMD value per field)
+
+    def zeros(self, t):
+        if t in self.structs:
+            fields = {}
+            for ft, fname, default in self.structs[t]:
+                if default is not None:
+                    v = convert(self.ev(default, np.ones(self.n, dtype=bool), hint=ft), ft)
+                    fields[fname] = V(ft, np.array(full(v, self.n), copy=True))
+                else:
+                    fields[fname] = self.zeros(ft)
+            return V(t, fields)
+        return zeros(t, self.n)
+
+    def copy_full(self, v):
+        if v.t in self.structs:
+            return V(v.t, {f: self.copy_full(fv) for f, fv in v.d.items()})
+        return V(v.t, np.array(full(v, self.n), copy=True))
+
+    def merge(self, mask, new, old):
+        """Masked select between two values of the same type."""
+        if new.t in self.structs:
+            return V(new.t, {f: self.merge(mask, new.d[f], old.d[f]) for f in new.d})
+        return V(old.t, mwhere(mask, new.d, old.d))
+
+    def to_type(self, v, t):
+        if t in self.structs or v.t in self.structs:
+            if v.t != t:
+                raise VexError("Can't convert %s to %s" % (v.t, t))
+            return v
+        return convert(v, t)
+
+    def construct(self, t, args, line=0):
+        fields = self.structs[t]
+        if len(args) > len(fields):
+            raise VexError("Line %d: %s has only %d members" % (line, t, len(fields)))
+        out = self.zeros(t)
+        for (ft, fname, _d), a in zip(fields, args):
+            out.d[fname] = V(ft, np.array(full(convert(a, ft), self.n), copy=True))
+        return out
+
     def declare(self, t, name, value, mask):
         scope = self.scopes[-1]
+        if t in self.structs:
+            value = self.zeros(t) if value is None else self.copy_full(self.to_type(value, t))
+            old = scope.get(name)
+            scope[name] = self.merge(mask, value, old) if old is not None and old.t == t else value
+            return
         if value is None:
             value = zeros(t, self.n)
         else:
@@ -152,10 +199,10 @@ class Interpreter:
                 if rt is None:
                     rt = v.t
                     f.rtype = rt
-                v = convert(v, rt)
+                v = self.to_type(v, rt)
                 if f.ret is None:
-                    f.ret = zeros(rt, self.n)
-                f.ret = V(rt, mwhere(mask, v.d, f.ret.d))
+                    f.ret = self.zeros(rt)
+                f.ret = self.merge(mask, v, f.ret)
             f.returned |= mask
             return np.zeros_like(mask)
         raise VexError("Unknown statement %s" % k)
@@ -267,6 +314,10 @@ class Interpreter:
             return V(t, mwhere(c, full(a, self.n), full(b, self.n)))
         if k == 'member':
             v = self.ev(node.x, mask)
+            if v.t in self.structs:
+                if node.name not in v.d:
+                    raise VexError("Line %d: %s has no member '%s'" % (node.line, v.t, node.name))
+                return v.d[node.name]
             idx = _swizzle(node.name, v.t, node.line)
             if v.t in MATRICES:
                 raise VexError("Line %d: member access on matrix" % node.line)
@@ -313,6 +364,8 @@ class Interpreter:
 
     def brace(self, node, mask, hint):
         items = [self.ev(x, mask) for x in node.items]
+        if hint in self.structs:
+            return self.construct(hint, items, node.line)
         if hint and is_array(hint):
             et = elem_type(hint)
             return _make_array(et, [convert(x, et) for x in items], self.n)
@@ -380,6 +433,11 @@ class Interpreter:
         if k == 'attr':
             return self.binding_type(target)
         if k == 'member':
+            base_t = self.target_type(target.x)
+            if base_t in self.structs:
+                for ft, fname, _d in self.structs[base_t]:
+                    if fname == target.name:
+                        return ft
             return 'float' if len(target.name) == 1 else VEC_BY_SIZE.get(len(target.name))
         if k == 'index':
             bt = self.target_type(target.x)
@@ -395,8 +453,8 @@ class Interpreter:
             if scope is None:
                 raise VexError("Line %d: undefined variable '%s'" % (target.line, target.name))
             old = scope[target.name]
-            value = convert(value, old.t)
-            scope[target.name] = V(old.t, mwhere(mask, value.d, old.d))
+            value = self.to_type(value, old.t)
+            scope[target.name] = self.merge(mask, value, old)
             return
         if k == 'attr':
             t = self.binding_type(target)
@@ -408,6 +466,16 @@ class Interpreter:
             return
         if k == 'member':
             base = self.ev(target.x, mask)
+            if base.t in self.structs:
+                fields = dict(base.d)
+                old_field = fields.get(target.name)
+                if old_field is None:
+                    raise VexError("Line %d: %s has no member '%s'" % (target.line, base.t, target.name))
+                fields[target.name] = self.merge(mask, self.to_type(value, old_field.t)
+                                                 if old_field.t in self.structs else
+                                                 V(old_field.t, convert(value, old_field.t).d), old_field)
+                self.store(target.x, V(base.t, fields), mask)
+                return
             idx = _swizzle(target.name, base.t, target.line)
             src = convert(value, 'float' if len(idx) == 1 else VEC_BY_SIZE[len(idx)])
             d = np.array(full(base, self.n), dtype=np.float64, copy=True)
@@ -494,6 +562,8 @@ class Interpreter:
 
     def call(self, node, mask, hint):
         name = node.name
+        if name in self.structs:
+            return self.construct(name, [self.ev(a, mask) for a in node.args], node.line)
         fns = self.functions.get(name)
         if fns:
             candidates = [f for f in fns if len(f.params) == len(node.args)] or fns
@@ -531,8 +601,8 @@ class Interpreter:
             raise VexError("Line %d: %s() expects %d arguments" % (node.line, fn.name, len(fn.params)))
         scope = {}
         for i, ((pt, pname), arg) in enumerate(zip(fn.params, node.args)):
-            v = convert(values[i] if values is not None else self.ev(arg, mask, hint=pt), pt)
-            scope[pname] = V(pt, np.array(full(v, self.n), copy=True))
+            v = self.to_type(values[i] if values is not None else self.ev(arg, mask, hint=pt), pt)
+            scope[pname] = self.copy_full(v)
         saved = self.scopes
         self.scopes = [saved[0], scope]
         f = _Func(fn.rtype, self.n)
@@ -550,7 +620,7 @@ class Interpreter:
                 self.store(arg, scope[pname], mask)
         if fn.rtype == 'void':
             return const('int', 0)
-        return f.ret if f.ret is not None else zeros(fn.rtype, self.n)
+        return f.ret if f.ret is not None else self.zeros(fn.rtype)
 
 
 # ----------------------------------------------------------------------

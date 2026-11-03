@@ -145,6 +145,26 @@ class TestVex(unittest.TestCase):
         np.testing.assert_array_equal(pa['last'], np.arange(out.num_points))
         np.testing.assert_array_equal(pa['sum'], 6 + np.arange(out.num_points))
 
+    def test_structs(self):
+        code = """
+        struct Particle { vector pos; float mass = 2.0; vector vel = {0, 1, 0}; }
+        Particle advance(Particle p; float dt) { p.pos += p.vel * dt; return p; }
+        Particle a = Particle(@P);
+        if (@ptnum % 2 == 0) a.mass = 10;
+        Particle b = advance(a, 2.0);
+        @P = b.pos;
+        f@m = a.mass;
+        Particle d = {@P, 3.0};
+        d.vel.y = 5;
+        f@dv = d.vel.y;
+        f@dm = d.mass;
+        """
+        g = _grid()
+        out, _ = _wrangle(code, g)
+        np.testing.assert_allclose(out.P[:, 1], g.P[:, 1] + 2.0)
+        np.testing.assert_array_equal(out.attribs['point']['m'], np.where(np.arange(g.num_points) % 2 == 0, 10.0, 2.0))
+        self.assertTrue(np.all(out.attribs['point']['dv'] == 5) and np.all(out.attribs['point']['dm'] == 3))
+
     def test_strings(self):
         out, msgs = _wrangle('s@name = sprintf("piece%d", @ptnum); printf("%s\\n", s@name);')
         self.assertEqual(out.attribs['point']['name'][3], 'piece3')

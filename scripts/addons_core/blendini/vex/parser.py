@@ -190,6 +190,7 @@ class Parser:
         self.toks = tokenize(src)
         self.pos = 0
         self.functions = {}
+        self.structs = {}   # name -> [(type, field, default expr or None)]
         self.bindings = {}  # name -> declared type (None if implicit)
 
     # -- token helpers
@@ -232,19 +233,43 @@ class Parser:
 
     def is_type(self, tok=None):
         tok = tok or self.tok
-        return tok.type == 'ident' and tok.value in TYPE_NAMES
+        return tok.type == 'ident' and (tok.value in TYPE_NAMES or tok.value in self.structs)
 
     # -- program
 
     def parse_program(self):
         stmts = []
         while self.tok.type != 'eof':
+            if self.tok.type == 'ident' and self.tok.value == 'struct':
+                self.parse_struct()
+                continue
             fn = self.try_function_def()
             if fn is not None:
                 self.functions.setdefault(fn.name, []).append(fn)
                 continue
             stmts.append(self.parse_statement())
-        return Node('program', 0, body=stmts, functions=self.functions, bindings=self.bindings)
+        return Node('program', 0, body=stmts, functions=self.functions, bindings=self.bindings, structs=self.structs)
+
+    def parse_struct(self):
+        line = self.next().line
+        name = self.expect_ident()
+        if name in TYPE_NAMES:
+            raise VexSyntaxError("Can't redefine type '%s'" % name, line)
+        self.structs[name] = fields = []
+        self.expect('{')
+        while not self.is_op('}'):
+            if not self.is_type():
+                raise VexSyntaxError("Expected a member type in struct %s" % name, self.tok.line, self.tok.col)
+            ftype = self.next().value
+            while True:
+                fname = self.expect_ident()
+                default = self.parse_assign() if self.accept('=') else None
+                fields.append((ftype, fname, default))
+                if not self.accept(','):
+                    break
+            self.expect(';')
+        self.expect('}')
+        self.accept(';')
 
     def try_function_def(self):
         start = self.pos
