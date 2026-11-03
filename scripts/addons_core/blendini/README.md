@@ -125,6 +125,7 @@ See [ROADMAP.md](ROADMAP.md) for what is done and what is planned.
 | Performance Monitor | *Show Cook Times* in the Network panel: each node's cook time next to it (red for the slowest) |
 | Digital assets (HDAs) | *Create Digital Asset* on a subnet: a shared definition (also a Blender asset) listed in the TAB menu; every instance updates when it is edited, promoted parameters stay per instance |
 | `s@instance` instancing | Instance SOP: points instance the Blender object they name (orient / N+up / pscale / scale) |
+| Visualize velocity / vectors | *Vectors* toggle in the viewport display: any vector point attribute (`v` by default) drawn as lines colored by speed |
 | Network boxes, dots | Network Box (Blender frame) and Dot (reroute) in the TAB menu's Layout section |
 | SOP Solver, Vellum, RBD (Bullet), FLIP, Pyro | Solver (VEX), Vellum Cloth (PBD), RBD Bullet Solver, FLIP Solver or Fluid Solver (PBF) + Particle Fluid Surface, Pyro Solver (Smoke / Fire) |
 | VDB / volumes, Volume Wrangle | Native voxel volumes (Volume, Volume from Polygons, **Volume Wrangle** with `@density`, Convert Volume). Fog volumes render as smoke through a Blender Volume object (OpenVDB). OpenVDB through Geometry Nodes for Particle Fluid Surface and VDB Reshape |

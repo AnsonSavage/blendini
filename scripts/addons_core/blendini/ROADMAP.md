@@ -47,7 +47,7 @@ and needs a real Blender session to confirm.
 - [x] TAB menu with auto-wiring, display/template/bypass flags (buttons, hotkeys, edge bars)
 - [x] Parameter pane, geometry info, spreadsheet, VEX status bar in the text editor, cook time badges
       (performance monitor), network boxes and dots
-- [x] Viewport overlays (point/prim numbers, normals, template wireframe), attribute visualizer
+- [x] Viewport overlays (point/prim numbers, normals, vectors such as v, template wireframe), attribute visualizer
 - [x] Houdini-like theme, layout, Create shelf, application template, default `Cd` material
 - [x] Polylines render as curves (width attribute), volumes as smoke / fire, material slots from
       shop_materialpath

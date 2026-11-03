@@ -40,7 +40,8 @@ def _displayed(context):
     """(tree, geometry, object) pairs to draw overlays for."""
     out = []
     for tree in cook.all_trees():
-        if not (tree.show_point_numbers or tree.show_prim_numbers or tree.show_normals):
+        if not (tree.show_point_numbers or tree.show_prim_numbers or tree.show_normals
+                or getattr(tree, 'show_vectors', False)):
             continue
         obj = tree.target
         if obj is None or not obj.visible_get():
@@ -112,10 +113,35 @@ def _draw_templates():
             gpu.state.blend_set('NONE')
 
 
+def _draw_vectors(tree, geo, obj):
+    vec = geo.attribs['point'].get(tree.vector_attrib.strip() or 'v')
+    if vec is None or vec.dtype == object or vec.ndim != 2 or vec.shape[1] != 3 or not geo.num_points:
+        return
+    base = geo.P[:MAX_NORMALS]
+    v = np.asarray(vec[:MAX_NORMALS], dtype=np.float64)
+    a = _world_points(obj, base)
+    b = _world_points(obj, base + v * tree.vector_scale)
+    coords = np.empty((len(a) * 2, 3), dtype=np.float32)
+    coords[0::2] = a
+    coords[1::2] = b
+    # Color by speed: slow blue to fast yellow.
+    speed = np.linalg.norm(v, axis=1)
+    t = speed / max(float(speed.max()), 1e-9)
+    col = np.stack([0.2 + 0.8 * t, 0.4 + 0.5 * t, 1.0 - 0.8 * t, np.ones_like(t)], axis=1).astype(np.float32)
+    colors = np.repeat(col, 2, axis=0)
+    shader = gpu.shader.from_builtin('FLAT_COLOR')
+    batch = batch_for_shader(shader, 'LINES', {"pos": coords, "color": colors})
+    gpu.state.depth_test_set('LESS_EQUAL')
+    batch.draw(shader)
+    gpu.state.depth_test_set('NONE')
+
+
 def draw_lines():
     context = bpy.context
     _draw_templates()
     for tree, geo, obj in _displayed(context):
+        if getattr(tree, 'show_vectors', False):
+            _draw_vectors(tree, geo, obj)
         if not tree.show_normals:
             continue
         pa = geo.attribs['point']

@@ -106,6 +106,12 @@ class BlendiniNodeTree(bpy.types.NodeTree):
                                description="Display normals in the viewport")
     normal_scale: FloatProperty(name="Normal Scale", default=1.0, min=0.0, soft_max=10.0,
                                 update=lambda s, c: _redraw_views())
+    show_vectors: BoolProperty(name="Vectors", default=False, update=lambda s, c: _redraw_views(),
+                               description="Draw a vector point attribute (e.g. v) as lines in the viewport")
+    vector_attrib: StringProperty(name="Vector Attribute", default="v", update=lambda s, c: _redraw_views())
+    vector_scale: FloatProperty(name="Vector Scale", default=0.1, min=0.0, soft_max=2.0,
+                                description="Line length = attribute value x scale (v x scale = motion in scale seconds)",
+                                update=lambda s, c: _redraw_views())
     visualize: StringProperty(name="Visualize Attribute", default="",
                               description="Show this point / primitive attribute as false color in the viewport",
                               update=lambda s, c: _revisualize(s))

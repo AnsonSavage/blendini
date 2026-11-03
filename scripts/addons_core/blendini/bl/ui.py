@@ -1410,8 +1410,13 @@ class BLENDINI_PT_network(bpy.types.Panel):
         row.prop(tree, "show_point_numbers", toggle=True, text="Point #")
         row.prop(tree, "show_prim_numbers", toggle=True, text="Prim #")
         row.prop(tree, "show_normals", toggle=True, text="Normals")
+        row.prop(tree, "show_vectors", toggle=True, text="Vectors")
         if tree.show_normals:
             box.prop(tree, "normal_scale")
+        if tree.show_vectors:
+            r2 = box.row(align=True)
+            r2.prop(tree, "vector_attrib", text="")
+            r2.prop(tree, "vector_scale", text="Scale")
         layout.operator("blendini.cook", icon='FILE_REFRESH')
         layout.operator("blendini.houdini_theme", icon='COLOR')
         layout.operator("blendini.houdini_layout", icon='WORKSPACE')
@@ -1478,6 +1483,10 @@ class BLENDINI_PT_view3d(bpy.types.Panel):
         col.prop(tree, "show_normals")
         if tree.show_normals:
             col.prop(tree, "normal_scale")
+        col.prop(tree, "show_vectors")
+        if tree.show_vectors:
+            col.prop(tree, "vector_attrib")
+            col.prop(tree, "vector_scale")
         node = cook.display_node(tree)
         geo_now = cook.node_geometry(node) if node is not None else None
         if geo_now is not None:
