@@ -55,7 +55,8 @@ and needs a real Blender session to confirm.
 - [ ] Native NURBS / Bézier primitives, volumes as a native primitive type
 - [x] RBD glue constraints (breakable FIXED constraints between neighbouring pieces)
 - [ ] Full constraint networks (hinges, springs from geometry), FLIP-style surface tension
-- [ ] Viewport handles and tool states (Transform handle, Edit brush)
+- [x] Viewport translate handle for the Transform SOP (gizmo bound to Translate)
+- [ ] More handles (rotate / scale, other SOPs) and tool states (Edit brush)
 - [ ] Multi-line code editor in the parameter pane (Blender UI has no widget for it today)
 
 ## Deliberately not planned

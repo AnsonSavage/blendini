@@ -1423,9 +1423,13 @@ def _all_classes():
 def register():
     for cls in _all_classes():
         bpy.utils.register_class(cls)
-    from . import overlay, node_overlay
+    from . import overlay, node_overlay, handles
     overlay.register()
     node_overlay.register()
+    try:
+        handles.register()
+    except Exception as ex:  # the viewport handle is optional
+        print("Blendini: viewport handles unavailable:", ex)
     bpy.types.VIEW3D_MT_add.append(draw_view3d_add)
     bpy.app.handlers.frame_change_post.append(on_frame_change)
     bpy.app.handlers.load_post.append(on_load_post)
@@ -1446,9 +1450,13 @@ def register():
 
 
 def unregister():
-    from . import overlay, node_overlay
+    from . import overlay, node_overlay, handles
     overlay.unregister()
     node_overlay.unregister()
+    try:
+        handles.unregister()
+    except Exception:
+        pass
     for km, kmi in addon_keymaps:
         try:
             km.keymap_items.remove(kmi)
