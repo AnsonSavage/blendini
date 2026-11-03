@@ -257,6 +257,8 @@ class Interpreter:
             return old if node.post else new
         if k == 'ternary':
             c = truthy(self.ev(node.cond, mask))
+            if c.shape[0] != self.n:
+                c = np.broadcast_to(c, (self.n,)).copy()  # constant condition
             a = self.ev(node.yes, mask & c, hint)
             b = self.ev(node.no, mask & ~c, hint)
             t = _promote(a.t, b.t) if a.t != b.t else a.t

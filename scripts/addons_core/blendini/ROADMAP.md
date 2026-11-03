@@ -39,7 +39,7 @@ and needs a real Blender session to confirm.
 ## Next (in priority order)
 
 - [x] For-Each "by count" (run N iterations and merge, without feedback)
-- [ ] More VOP nodes: compare + two-way switch, ramp (chramp), trig/exp/min/max, random vector
+- [x] More VOP nodes: compare + two-way switch, ramp (chramp), trig/exp/min/max, random vector
 - [ ] VDB nodes through Geometry Nodes: VDB from Polygons, Convert VDB (volume to mesh)
 - [ ] Delete SOP (by number, by expression, by bounding box) as in Houdini
 - [ ] Attribute Interpolate (sourceprim + uv from Scatter)

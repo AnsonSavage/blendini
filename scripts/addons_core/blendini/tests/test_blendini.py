@@ -311,6 +311,7 @@ TUTORIAL_SNIPPETS = {
  'detail_read': 'f@x = detail(0, "missing");',
  'dot_dot': 'f@d = dot(@N, {0,1,0});',
  'const_pi': 'f@x = sin(@P.x * M_PI);',
+ 'const_ternary': 'v@c = 1 ? {1,0,0} : {0,0,1}; f@f = (2 > 3) ? 1.0 : 0.5;',
  'iter_vec_fe': 'vector ps[] = {{1,2,3},{4,5,6}}; vector s = 0; foreach (vector p; ps) s += p; v@s = s;',
 }
 

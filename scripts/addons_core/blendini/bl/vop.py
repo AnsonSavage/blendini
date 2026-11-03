@@ -117,11 +117,28 @@ VOPS = {
                   [('Noise', V)], "curlnoise({Position} * {Frequency}) * {Amplitude}"),
     'random': ("Random", 'Noise', [('Seed', F, 0.0)], [('Random', F)], "rand({Seed})"),
     'hsv': ("HSV to RGB", 'Color', [('HSV', V, 0.0)], [('RGB', V)], "hsvtorgb({HSV})"),
+    'tan': ("Tangent", 'Math', [('Value', F, 0.0)], [('Result', F)], "tan({Value})"),
+    'exp': ("Exponential", 'Math', [('Value', F, 0.0)], [('Result', F)], "exp({Value})"),
+    'log': ("Natural Log", 'Math', [('Value', F, 1.0)], [('Result', F)], "log({Value})"),
+    'sqrt': ("Square Root", 'Math', [('Value', F, 1.0)], [('Result', F)], "sqrt({Value})"),
+    'floor': ("Floor", 'Math', [('Value', F, 0.0)], [('Result', F)], "floor({Value})"),
+    'frac': ("Fraction", 'Math', [('Value', F, 0.0)], [('Result', F)], "frac({Value})"),
+    'min': ("Minimum", 'Math', [('A', F, 0.0), ('B', F, 1.0)], [('Min', F)], "min({A}, {B})"),
+    'max': ("Maximum", 'Math', [('A', F, 0.0), ('B', F, 1.0)], [('Max', F)], "max({A}, {B})"),
+    'smooth': ("Smooth", 'Math', [('Min', F, 0.0), ('Max', F, 1.0), ('Value', F, 0.5)], [('Result', F)],
+               "smooth({Min}, {Max}, {Value})"),
+    'greater': ("Compare (A > B)", 'Logic', [('A', F, 0.0), ('B', F, 0.0)], [('Result', F)], "float({A} > {B})"),
+    'less': ("Compare (A < B)", 'Logic', [('A', F, 0.0), ('B', F, 0.0)], [('Result', F)], "float({A} < {B})"),
+    'switch': ("Two Way Switch", 'Logic', [('Condition', F, 1.0), ('Input 1', V, 1.0), ('Input 2', V, 0.0)],
+               [('Result', V)], "(({Condition}) != 0 ? {Input_1} : {Input_2})"),
+    'fswitch': ("Two Way Switch (Float)", 'Logic', [('Condition', F, 1.0), ('Input 1', F, 1.0), ('Input 2', F, 0.0)],
+                [('Result', F)], "(({Condition}) != 0 ? {Input_1} : {Input_2})"),
+    'vrandom': ("Random Vector", 'Noise', [('Seed', F, 0.0)], [('Random', V)], "vector(rand({Seed}))"),
     'constant': ("Constant", 'Input', [('Value', F, 0.0)], [('Value', F)], "{Value}"),
     'vconstant': ("Vector Constant", 'Input', [('Value', V, 0.0)], [('Value', V)], "{Value}"),
 }
 
-CATEGORIES = ['Input', 'Math', 'Vector', 'Noise', 'Color', 'Output']
+CATEGORIES = ['Input', 'Math', 'Logic', 'Vector', 'Noise', 'Color', 'Output']
 
 
 def _vex_literal(sock):
@@ -205,6 +222,22 @@ class BlendiniVOPParm(BlendiniVOPNodeBase, bpy.types.Node):
         layout.prop(self, "parmname")
 
 
+class BlendiniVOPRamp(BlendiniVOPNodeBase, bpy.types.Node):
+    """A ramp parameter (chramp) on the Attribute VOP; create it with the + button"""
+    bl_idname = VOP_PREFIX + 'ramp'
+    bl_label = "Ramp Parameter"
+    vop_id = 'ramp'
+    vop_category = 'Input'
+    parmname: StringProperty(name="Name", default="ramp", update=_request_owner_cook)
+
+    def init(self, context):
+        self.inputs.new(FLOAT_SOCKET, "Input")
+        self.outputs.new(FLOAT_SOCKET, "Value")
+
+    def draw_buttons(self, context, layout):
+        layout.prop(self, "parmname")
+
+
 class BlendiniVOPOutput(BlendiniVOPNodeBase, bpy.types.Node):
     """Geometry VOP Output: writes P, N, Cd and v"""
     bl_idname = VOP_PREFIX + 'output'
@@ -280,6 +313,8 @@ def generate_vex(tree):
             names[(node.name, 1)] = "vector(%s@%s)" % (prefix, node.attrib)
         elif vid == 'parm':
             names[(node.name, 0)] = 'ch("%s")' % node.parmname
+        elif vid == 'ramp':
+            names[(node.name, 0)] = 'chramp("%s", %s)' % (node.parmname, input_expr(node.inputs[0]))
         elif vid in VOPS:
             args = {}
             for sock in node.inputs:
@@ -337,7 +372,8 @@ _SIMPLE = []
 def all_vop_node_classes():
     if not _SIMPLE:
         _SIMPLE.extend(_make_simple_vop(k, v) for k, v in VOPS.items())
-    return [BlendiniVOPGlobals, BlendiniVOPBind, BlendiniVOPParm, BlendiniVOPOutput, BlendiniVOPBindExport] + _SIMPLE
+    return [BlendiniVOPGlobals, BlendiniVOPBind, BlendiniVOPParm, BlendiniVOPRamp, BlendiniVOPOutput,
+            BlendiniVOPBindExport] + _SIMPLE
 
 
 classes = (BlendiniVOPFloatSocket, BlendiniVOPVectorSocket, BlendiniVOPTree)
