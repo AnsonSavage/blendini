@@ -171,7 +171,7 @@ about 0.8 s, and 10k points with `nearpoints` and `noise` in about 0.2 s.
 
 Supported language:
 
-- Types: `int float vector2 vector vector4 matrix2 matrix3 matrix string`, arrays (`int[]` …) and
+- Types: `int float vector2 vector vector4 matrix2 matrix3 matrix string dict`, arrays (`int[]` …) and
   `struct`s (member defaults, constructors, passing to and returning from functions, methods
   called with `obj->method()`, arrays of structs with `push` / `pop` / `insert` / `foreach`).
 - `@` bindings with prefixes (`f@ i@ v@ p@ u@ s@ 2@ 3@ 4@ i[]@` …) and known names

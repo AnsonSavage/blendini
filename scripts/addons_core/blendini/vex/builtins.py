@@ -736,7 +736,7 @@ def _array_lanes(I, v):
 @builtin('len')
 def _len(I, args, mask, hint):
     a = args[0]
-    if is_array(a.t) or a.t == 'string':
+    if is_array(a.t) or a.t in ('string', 'dict'):
         return V('int', np.array([len(x) for x in a.d], dtype=np.int64))
     if a.t in VECTORS:
         return const('int', VECTORS[a.t])
@@ -879,6 +879,9 @@ def _reverse(I, args, mask, hint):
 def _isvalidindex(I, args, mask, hint):
     arr, idx = args
     d = full(arr, I.n)
+    if arr.t == 'dict':
+        keys = full(convert(idx, 'string'), I.n)
+        return V('int', np.array([1 if keys[i] in d[i] else 0 for i in range(I.n)], dtype=np.int64))
     ii = full(convert(idx, 'int'), I.n)
     return V('int', np.array([0 <= ii[i] < len(d[i]) for i in range(I.n)], dtype=np.int64))
 

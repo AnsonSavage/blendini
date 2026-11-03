@@ -14,7 +14,7 @@ from .builtins import (
     builtin, OUTARGS, _n, _f, _uniform_str, _geo, _point_prims_table, _axis_angle_matrix, _matrix3_from_quat,
     _quat_from_matrix3, _pc_handle, _noise_pos, _result_dims,
 )
-from .values import V, SCALARS, VECTORS, MATRICES, VEC_BY_SIZE, const, full, convert, type_of_array
+from .values import V, VexError, SCALARS, VECTORS, MATRICES, VEC_BY_SIZE, const, full, convert, type_of_array
 from ..core import noise as _noise
 
 
@@ -1025,3 +1025,37 @@ def _volumeindex(I, args, mask, hint):
     if vol.is_vector:
         return V('vector', np.where(ok[:, None], val, 0.0))
     return V('float', np.where(ok, val, 0.0))
+
+
+# ----------------------------------------------------------------------------
+# Dictionaries and generic attribute access
+
+
+@builtin('keys')
+def _keys(I, args, mask, hint):
+    d = full(args[0], I.n)
+    out = np.empty(I.n, dtype=object)
+    for i in range(I.n):
+        out[i] = sorted(d[i].keys()) if isinstance(d[i], dict) else []
+    return V('string[]', out)
+
+
+@builtin('getattrib')
+def _getattrib(I, args, mask, hint):
+    """getattrib(geo, class, name, elemnum, &success)"""
+    from .builtins import FUNCTIONS
+    cls = _uniform_str(args[1])
+    fn = {'point': 'point', 'prim': 'prim', 'primitive': 'prim', 'vertex': 'vertex', 'detail': 'detail',
+          'global': 'detail'}.get(cls)
+    if fn is None:
+        raise VexError("getattrib: unknown attribute class '%s'" % cls)
+    call = [args[0], args[2]] + ([args[3]] if fn != 'detail' else [])
+    val = FUNCTIONS[fn](I, call, mask, hint)
+    geo = _geo(I, args[0])
+    name = _uniform_str(args[2])
+    c = {'primitive': 'prim', 'global': 'detail'}.get(cls, cls)
+    ok = name in geo.attribs.get(c, {}) or (name == 'P' and c == 'point')
+    return val, {4: const('int', 1 if ok else 0)}
+
+
+OUTARGS.add('getattrib')

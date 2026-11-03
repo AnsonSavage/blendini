@@ -53,7 +53,7 @@ def elem_type(t):
 def dtype_for(t):
     if t == 'int':
         return np.int64
-    if t == 'string' or is_array(t):
+    if t in ('string', 'dict') or is_array(t):
         return object
     return np.float64
 
@@ -79,6 +79,11 @@ def zeros(t, n):
     if t == 'string':
         d = np.empty(n, dtype=object)
         d[:] = ''
+        return V(t, d)
+    if t == 'dict':
+        d = np.empty(n, dtype=object)
+        for i in range(n):
+            d[i] = {}
         return V(t, d)
     if t in MATRICES:
         k = MATRICES[t]

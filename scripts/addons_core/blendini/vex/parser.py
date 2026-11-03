@@ -120,6 +120,13 @@ def tokenize(src, macros=None):
                 toks.append(Tok('attr', (prefix, bool(arr), name), line, col))
                 i = m.end()
                 continue
+        if c == '0' and i + 2 < n and src[i + 1] in 'xX' and src[i + 2] in '0123456789abcdefABCDEF':
+            j = i + 2
+            while j < n and src[j] in '0123456789abcdefABCDEF':
+                j += 1
+            toks.append(Tok('int', int(src[i + 2:j], 16), line, col))
+            i = j
+            continue
         if c.isdigit() or (c == '.' and i + 1 < n and src[i + 1].isdigit()):
             m = _num_re.match(src, i)
             text = m.group(0)

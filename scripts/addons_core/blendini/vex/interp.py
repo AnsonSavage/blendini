@@ -410,6 +410,9 @@ class Interpreter:
             return V(VEC_BY_SIZE[len(idx)], d)
         if k == 'index':
             v = self.ev(node.x, mask)
+            if v.t == 'dict':
+                return _dict_get(full(v, self.n), full(convert(self.ev(node.i, mask), 'string'), self.n), mask, hint,
+                                 self.n)
             i = convert(self.ev(node.i, mask), 'int')
             if self.is_struct(v.t):
                 return self.sa_get(v, full(i, self.n), mask)
@@ -581,6 +584,16 @@ class Interpreter:
             return
         if k == 'index':
             base = self.ev(target.x, mask)
+            if base.t == 'dict':
+                keys = full(convert(self.ev(target.i, mask), 'string'), self.n)
+                d = np.array(full(base, self.n), dtype=object, copy=True)
+                vals = full(value, self.n)
+                for j in np.nonzero(mask)[0]:
+                    nd = dict(d[j])
+                    nd[keys[j]] = _to_py(vals[j], value.t)
+                    d[j] = nd
+                self.store(target.x, V('dict', d), mask)
+                return
             i = full(convert(self.ev(target.i, mask), 'int'), self.n)
             if is_array(base.t):
                 self.store(target.x, self.set_elem(base, i, value, mask), mask)
@@ -794,6 +807,57 @@ def _assemble(t, vals, n_lanes):
             d = d.reshape(n, k, k)
         return V(t, d)
     return convert(vals[0], t)
+
+
+def _to_py(x, t):
+    if t == 'int':
+        return int(x)
+    if t == 'float':
+        return float(x)
+    if t == 'string':
+        return str(x)
+    if t == 'dict':
+        return dict(x)
+    if is_array(t):
+        return list(x) if isinstance(x, list) else np.asarray(x).tolist()
+    return np.asarray(x, dtype=np.float64).tolist()
+
+
+def _py_type(x):
+    if isinstance(x, bool) or isinstance(x, (int, np.integer)):
+        return 'int'
+    if isinstance(x, (float, np.floating)):
+        return 'float'
+    if isinstance(x, str):
+        return 'string'
+    if isinstance(x, dict):
+        return 'dict'
+    if isinstance(x, (list, tuple)):
+        flat = np.asarray(x)
+        if flat.ndim == 1 and flat.dtype.kind in 'if':
+            return {2: 'vector2', 3: 'vector', 4: 'vector4'}.get(len(flat), 'float[]')
+        if flat.ndim == 2:
+            return {2: 'matrix2', 3: 'matrix3', 4: 'matrix'}.get(flat.shape[0], 'float[]')
+    return 'float'
+
+
+def _dict_get(dicts, keys, mask, hint, n):
+    """d[key] for every lane; the result type comes from the caller (hint) or the stored values."""
+    vals = [dicts[i].get(keys[i]) if mask[i] else None for i in range(n)]
+    t = hint if hint and hint != 'dict' else next((_py_type(v) for v in vals if v is not None), 'float')
+    out = zeros(t, n)
+    d = out.d
+    for i, v in enumerate(vals):
+        if v is None:
+            continue
+        vt = _py_type(v)
+        try:
+            src = V(vt, np.array([v], dtype=object) if vt in ('string', 'dict') or is_array(vt)
+                    else np.asarray([v], dtype=np.int64 if vt == 'int' else np.float64))
+            d[i] = full(convert(src, t), 1)[0]
+        except (VexError, ValueError, TypeError):
+            pass
+    return V(t, d)
 
 
 def _make_array(et, vals, n):

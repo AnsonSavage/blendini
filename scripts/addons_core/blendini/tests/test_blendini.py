@@ -244,6 +244,23 @@ class TestVex(unittest.TestCase):
         self.assertEqual(int((hits >= 0).sum()), 1)
         self.assertAlmostEqual(float(out.attribs['point']['hy'][hits >= 0][0]), 0.5)
 
+    def test_dict_hex_getattrib(self):
+        code = r"""
+        dict d; d["a"] = 1; d["name"] = "piece"; d["pos"] = {1, 2, 3};
+        if (@ptnum % 2) d["a"] = @ptnum;
+        i@a = d["a"]; s@nm = d["name"]; v@pos = d["pos"]; i@n = len(d);
+        i@has = isvalidindex(d, "pos") * 10 + isvalidindex(d, "zz");
+        i@h = 0xff;
+        int ok; vector p = getattrib(0, "point", "P", 1, ok); i@ok = ok;
+        """
+        g = _grid(3)
+        out, _ = _wrangle(code, g)
+        pa = out.attribs['point']
+        np.testing.assert_array_equal(pa['a'], np.where(np.arange(9) % 2, np.arange(9), 1))
+        self.assertEqual((pa['nm'][0], int(pa['n'][0]), int(pa['has'][0]), int(pa['h'][0]), int(pa['ok'][0])),
+                         ('piece', 3, 10, 255, 1))
+        np.testing.assert_allclose(pa['pos'][0], [1, 2, 3])
+
     def test_strings(self):
         out, msgs = _wrangle('s@name = sprintf("piece%d", @ptnum); printf("%s\\n", s@name);')
         self.assertEqual(out.attribs['point']['name'][3], 'piece3')
