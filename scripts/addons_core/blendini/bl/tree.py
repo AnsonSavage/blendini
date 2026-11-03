@@ -237,6 +237,11 @@ class BlendiniNodeBase:
         d = np.asarray(self.get("edit_delta", []), dtype=np.float64).reshape(-1, 3)
         return idx, d
 
+    def paint_values(self):
+        """Painted values of an Attribute Paint SOP (one float per point, or empty)."""
+        import numpy as np
+        return np.asarray(self.get("paint_values", []), dtype=np.float64)
+
     def ramps(self):
         from .ramps import sample
         return {sp.name: sample(sp.ramp_key) for sp in self.spare if sp.kind == 'ramp'}

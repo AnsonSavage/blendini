@@ -127,6 +127,14 @@ def draw_parms(node, context, layout, compact=False):
         col2.operator("blendini.edit_clear", icon='X')
     if sop.id == 'filecache':
         layout.operator("blendini.filecache_save", icon='FILE_CACHE')
+    if sop.id == 'attribpaint':
+        box = layout.box()
+        pv = node.paint_values()
+        box.label(text="%d painted points" % len(pv) if len(pv) else "Not painted yet", icon='BRUSH_DATA')
+        col2 = box.column(align=True)
+        col2.operator("blendini.paint_begin", icon='BRUSH_DATA')
+        col2.operator("blendini.paint_commit", icon='CHECKMARK')
+        col2.operator("blendini.paint_clear", icon='X')
     if sop.id == 'subnet' and node.subtree is not None:
         if getattr(node.subtree, 'is_hda', False):
             layout.label(text="Digital asset: %s (shared definition)" % (node.subtree.hda_label or node.subtree.name),
@@ -441,6 +449,109 @@ class BLENDINI_OT_edit_clear(bpy.types.Operator):
         tree, node = _edit_node(context)
         node["edit_idx"] = []
         node["edit_delta"] = []
+        cook.cook_tree(tree)
+        return {'FINISHED'}
+
+
+PAINT_GROUP = "blendini_paint"
+
+
+def _paint_node(context):
+    tree, node = _active_node(context)
+    if node is None or node.sop_id != 'attribpaint':
+        return None, None
+    return tree, node
+
+
+class BLENDINI_OT_paint_begin(bpy.types.Operator):
+    """Show this node and switch the output object to Weight Paint mode to paint the attribute"""
+    bl_idname = "blendini.paint_begin"
+    bl_label = "Paint in Viewport"
+
+    @classmethod
+    def poll(cls, context):
+        return _paint_node(context)[1] is not None
+
+    def execute(self, context):
+        tree, node = _paint_node(context)
+        for n in tree.nodes:
+            if isinstance(n, BlendiniNodeBase):
+                n.display_flag = (n == node)
+        cook.cook_tree(tree)
+        obj = tree.target
+        if obj is None or context.view_layer.objects.get(obj.name) is None:
+            self.report({'ERROR'}, "The output object is not in the current view layer")
+            return {'CANCELLED'}
+        geo = cook.node_geometry(node)
+        vals = geo.attribs['point'].get(node.p_attrib.strip() or 'mask') if geo is not None else None
+        vg = obj.vertex_groups.get(PAINT_GROUP) or obj.vertex_groups.new(name=PAINT_GROUP)
+        n = len(obj.data.vertices)
+        if vals is not None and len(vals) == n:
+            for w in sorted(set(float(round(x, 4)) for x in vals)):
+                idx = [i for i, x in enumerate(vals) if round(float(x), 4) == w]
+                vg.add(idx, w, 'REPLACE')
+        else:
+            vg.add(list(range(n)), float(node.p_default), 'REPLACE')
+        obj.vertex_groups.active_index = vg.index
+        if context.object is not None and context.object.mode != 'OBJECT':
+            bpy.ops.object.mode_set(mode='OBJECT')
+        for o in context.view_layer.objects:
+            o.select_set(False)
+        obj.select_set(True)
+        context.view_layer.objects.active = obj
+        bpy.ops.object.mode_set(mode='WEIGHT_PAINT')
+        self.report({'INFO'}, "Paint, then press 'Commit Paint' on the Attribute Paint node")
+        return {'FINISHED'}
+
+
+class BLENDINI_OT_paint_commit(bpy.types.Operator):
+    """Leave Weight Paint mode and store the painted values on the node"""
+    bl_idname = "blendini.paint_commit"
+    bl_label = "Commit Paint"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return _paint_node(context)[1] is not None
+
+    def execute(self, context):
+        tree, node = _paint_node(context)
+        obj = tree.target
+        if obj is None:
+            return {'CANCELLED'}
+        if obj.mode != 'OBJECT':
+            with context.temp_override(active_object=obj, object=obj):
+                bpy.ops.object.mode_set(mode='OBJECT')
+        vg = obj.vertex_groups.get(PAINT_GROUP)
+        if vg is None:
+            self.report({'ERROR'}, "Nothing painted yet (press 'Paint in Viewport' first)")
+            return {'CANCELLED'}
+        values = [float(node.p_default)] * len(obj.data.vertices)
+        for v in obj.data.vertices:
+            for g in v.groups:
+                if g.group == vg.index:
+                    values[v.index] = float(g.weight)
+        node["paint_values"] = values
+        obj.vertex_groups.remove(vg)
+        cook.request_cook(tree)
+        cook.cook_tree(tree)
+        self.report({'INFO'}, "Stored painted values for %d points" % len(values))
+        return {'FINISHED'}
+
+
+class BLENDINI_OT_paint_clear(bpy.types.Operator):
+    """Remove the painted values from the Attribute Paint node"""
+    bl_idname = "blendini.paint_clear"
+    bl_label = "Clear Paint"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return _paint_node(context)[1] is not None
+
+    def execute(self, context):
+        tree, node = _paint_node(context)
+        node["paint_values"] = []
         cook.cook_tree(tree)
         return {'FINISHED'}
 
@@ -1598,6 +1709,9 @@ def _poll_texts():
 addon_keymaps = []
 
 classes = (
+    BLENDINI_OT_paint_begin,
+    BLENDINI_OT_paint_commit,
+    BLENDINI_OT_paint_clear,
     BLENDINI_OT_create_hda,
     BLENDINI_OT_add_hda,
     BLENDINI_OT_filecache_save,

@@ -25,7 +25,7 @@ and needs a real Blender session to confirm.
 - [x] Attribute VOP (visual VEX network that generates code)
 - [x] Driver expressions on parameters evaluated through VEX (`#frame * 0.1`), keyframes
 
-### SOPs (152)
+### SOPs (153)
 - [x] Primitives, manipulation, polygon, attribute, group, copy/instancing, terrain, utility,
       Blender-backed (modifiers, bmesh, BVH, Bullet, OpenVDB) — see README for the full list
 - [x] Simulations: Solver (VEX), Vellum-style cloth (PBD), RBD (Bullet), FLIP and PBF liquids + meshing, Pyro smoke and fire
@@ -89,7 +89,8 @@ and needs a real Blender session to confirm.
 - [x] Viewport handle for the Transform SOP (translate arrows + rotate dials)
 - [x] More handles: Transform scale and pivot, primitives (center / size / radius), origins,
       lengths, bounding box groups (table driven, `bl/handles.py`)
-- [ ] Tool states (Edit brush / soft selection)
+- [x] Tool states through Blender's modes: Edit SOP (Edit Mode, proportional editing) and Attribute Paint
+      (Weight Paint brushes)
 - [ ] Multi-line code editor in the parameter pane (Blender UI has no widget for it today)
 
 ## Deliberately not planned

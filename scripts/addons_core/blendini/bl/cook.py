@@ -279,6 +279,10 @@ def cook_node(node, ctx_base, visiting=None):
         if sop.id == 'edit':
             idx, d = node.edit_deltas()
             channels = dict(channels, __edits=(tuple(idx.tolist()), tuple(d.ravel().round(6).tolist())))
+        if sop.id == 'attribpaint':
+            pv = node.paint_values()
+            channels = dict(channels, __paint=(len(pv), float(np.round(pv, 6).sum()) if len(pv) else 0.0,
+                                              hash(np.round(pv, 5).tobytes())))
         time_dep = _is_time_dependent(node, parms) or ctx_base['animated']
         sig = (
             sop.id, node.mute,
@@ -306,6 +310,8 @@ def cook_node(node, ctx_base, visiting=None):
         ctx.ramps = ramps
         if sop.id == 'edit':
             ctx.edit_deltas = node.edit_deltas()
+        if sop.id == 'attribpaint':
+            ctx.paint_values = node.paint_values()
         if sop.id == 'trail':
             ups = _input_links(node.inputs[0])
             if ups:
@@ -570,8 +576,8 @@ def cook_tree(tree, frame=None):
                 except CookError:
                     pass
         obj = ensure_target(tree)
-        if obj.mode == 'EDIT':
-            # Never overwrite a mesh that is being edited (Edit SOP workflow).
+        if obj.mode in ('EDIT', 'WEIGHT_PAINT', 'VERTEX_PAINT', 'SCULPT'):
+            # Never overwrite a mesh that is being edited or painted (Edit / Attribute Paint SOPs).
             return geo
         tkey = ('__written__', _tree_key(tree))
         if _cache.get(tkey) != (sig, obj.data.name) or sig is None:

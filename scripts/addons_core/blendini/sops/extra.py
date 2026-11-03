@@ -1155,3 +1155,37 @@ class GroupTransferSOP(SOP):
             g[ok] = src.groups[cls][name][idx[ok]]
             geo.groups[cls][name] = g
         return geo
+
+
+@register_sop
+class AttribPaintSOP(SOP):
+    id = 'attribpaint'
+    label = "Attribute Paint"
+    category = 'Attribute'
+    inputs = 1
+    icon = 'BRUSH_DATA'
+    description = ("Paint a float point attribute (e.g. a mask) with Blender's Weight Paint tools; "
+                   "the painted values are stored on the node")
+    parms = (
+        Parm('attrib', "Attribute", 'string', default='mask'),
+        Parm('default', "Unpainted Value", 'float', default=0.0, min=0.0, max=1.0),
+        Parm('visualize', "Visualize as Cd", 'bool', default=True),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs).copy()
+        n = geo.num_points
+        vals = getattr(ctx, 'paint_values', None)
+        out = np.full(n, float(p.default))
+        if vals is not None and len(vals):
+            if len(vals) == n:
+                out = np.asarray(vals, dtype=np.float64)
+            else:
+                ctx.warn("Attribute Paint: painted %d points but the input has %d (repaint or clear)" % (len(vals), n))
+        name = p.attrib.strip() or 'mask'
+        geo.attribs[POINT][name] = out
+        if p.visualize:
+            cd = geo.attribs[POINT].get('Cd')
+            base = np.full((n, 3), 0.75) if cd is None or cd.dtype == object else cd
+            geo.attribs[POINT]['Cd'] = base * (1 - out[:, None]) + np.array([0.9, 0.1, 0.05]) * out[:, None]
+        return geo

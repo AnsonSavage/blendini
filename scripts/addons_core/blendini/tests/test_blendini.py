@@ -809,6 +809,18 @@ class TestEverydaySops(unittest.TestCase):
         lo, hi = np.array(p['boxmin']), np.array(p['boxmax'])
         self.assertTrue(np.all((out.P >= lo - 1e-9) & (out.P <= hi + 1e-9)))
 
+    def test_attrib_paint(self):
+        from blendini.sops import REGISTRY, default_parms, CookContext
+        g = _grid(3)
+        ctx = CookContext()
+        ctx.paint_values = np.linspace(0, 1, g.num_points)
+        out = REGISTRY['attribpaint'].cook([g], default_parms('attribpaint'), ctx)
+        np.testing.assert_allclose(out.attribs['point']['mask'], ctx.paint_values)
+        ctx2 = CookContext()
+        ctx2.paint_values = np.ones(3)          # stale paint (point count changed): default value + warning
+        out2 = REGISTRY['attribpaint'].cook([g], default_parms('attribpaint'), ctx2)
+        self.assertTrue(np.all(out2.attribs['point']['mask'] == 0) and ctx2.warnings)
+
     def test_skin(self):
         rows = Geometry.from_polys([[x, y, 0] for y in range(3) for x in range(4)],
                                    [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], closed=False)

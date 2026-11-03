@@ -212,6 +212,32 @@ def main():
                 bpy.data.objects.remove(target)
         bpy.data.node_groups.remove(inner)
 
+    def attribute_paint():
+        import numpy as np
+        from blendini.bl.examples import _finish
+        tree = bpy.data.node_groups.new("paint_test", "BlendiniSOPTree")
+        try:
+            g = tree.nodes.new(NODE_PREFIX + 'grid')
+            pn = tree.nodes.new(NODE_PREFIX + 'attribpaint')
+            tree.links.new(g.outputs[0], pn.inputs[0])
+            _finish(tree, pn)
+            cook.cook_tree(tree)
+            obj = tree.target
+            vg = obj.vertex_groups.new(name=ui.PAINT_GROUP)
+            vg.add([v.index for v in obj.data.vertices if v.co.x > 0], 1.0, 'REPLACE')
+            ctx = mock.MagicMock()
+            ctx.space_data.edit_tree = tree
+            ctx.space_data.tree_type = 'BlendiniSOPTree'
+            tree.nodes.active = pn
+            assert ui.BLENDINI_OT_paint_commit.execute(mock.MagicMock(), ctx) == {'FINISHED'}
+            m = cook.cook_node_at(pn, 1).attribs['point']['mask']
+            assert int((m > 0.5).sum()) == 50, int((m > 0.5).sum())
+        finally:
+            target = tree.target
+            bpy.data.node_groups.remove(tree)
+            if target is not None:
+                bpy.data.objects.remove(target)
+
     def unregister():
         blendini.unregister()
 
@@ -224,6 +250,7 @@ def main():
     check("file cache save / load", file_cache)
     check("material slots from shop_materialpath", material_slots)
     check("digital assets (shared subnet definitions)", digital_assets)
+    check("attribute paint commit", attribute_paint)
     check("unregister", unregister)
     print("\n%d failure(s)" % len(failures))
     return 1 if failures else 0
