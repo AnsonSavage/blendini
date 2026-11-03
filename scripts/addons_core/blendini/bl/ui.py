@@ -127,6 +127,12 @@ def draw_parms(node, context, layout, compact=False):
         col2.operator("blendini.edit_clear", icon='X')
     if sop.id == 'filecache':
         layout.operator("blendini.filecache_save", icon='FILE_CACHE')
+    if sop.id == 'subnet' and node.subtree is not None:
+        if getattr(node.subtree, 'is_hda', False):
+            layout.label(text="Digital asset: %s (shared definition)" % (node.subtree.hda_label or node.subtree.name),
+                         icon='ASSET_MANAGER')
+        else:
+            layout.operator("blendini.create_hda", icon='ASSET_MANAGER')
     if sop.id in VOP_SOPS:
         row = layout.row(align=True)
         row.operator("blendini.dive_in", text="Dive In (I)", icon='TRIA_DOWN_BAR')
@@ -876,6 +882,94 @@ class BLENDINI_OT_export_obj(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def hda_definitions():
+    return sorted((t for t in bpy.data.node_groups if t.bl_idname == TREE_ID and getattr(t, 'is_hda', False)),
+                  key=lambda t: t.hda_label or t.name)
+
+
+class BLENDINI_OT_create_hda(bpy.types.Operator):
+    """Turn this subnetwork into a digital asset: a shared definition you can add from the TAB menu
+    (and the Asset Browser), whose instances all update when the definition is edited"""
+    bl_idname = "blendini.create_hda"
+    bl_label = "Create Digital Asset"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    label: StringProperty(name="Asset Name", default="my_asset")
+
+    @classmethod
+    def poll(cls, context):
+        tree, node = _active_node(context)
+        return node is not None and node.sop_id == 'subnet' and node.subtree is not None \
+            and not getattr(node.subtree, 'is_hda', False)
+
+    def invoke(self, context, event):
+        tree, node = _active_node(context)
+        self.label = node.name
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        tree, node = _active_node(context)
+        inner = node.subtree
+        label = self.label.strip() or node.name
+        inner.is_hda = True
+        inner.hda_label = label
+        inner.owner_tree = None
+        inner.use_fake_user = True
+        inner.name = "HDA %s" % label
+        try:
+            inner.asset_mark()
+            inner.asset_data.description = "Blendini digital asset"
+        except (AttributeError, RuntimeError):
+            pass
+        node.label = label
+        cook.request_cook(tree)
+        self.report({'INFO'}, "Created digital asset '%s'" % label)
+        return {'FINISHED'}
+
+
+class BLENDINI_OT_add_hda(bpy.types.Operator):
+    """Add an instance of a digital asset"""
+    bl_idname = "blendini.add_hda"
+    bl_label = "Add Digital Asset"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    definition: StringProperty(name="Definition")
+
+    @classmethod
+    def poll(cls, context):
+        return _in_blendini_tree(context)
+
+    def execute(self, context):
+        hda = bpy.data.node_groups.get(self.definition) if isinstance(self.definition, str) else None
+        tree = context.space_data.edit_tree
+        if hda is None or not getattr(hda, 'is_hda', False) or tree is None:
+            return {'CANCELLED'}
+        if hda == tree or tree in _subtrees(hda, set()):
+            self.report({'ERROR'}, "A digital asset can't contain itself")
+            return {'CANCELLED'}
+        node = tree.nodes.new(NODE_PREFIX + 'subnet')
+        made = node.subtree
+        node.subtree = hda
+        if made is not None and made != hda:
+            bpy.data.node_groups.remove(made)
+        node.label = hda.hda_label or hda.name
+        node.location = getattr(context.space_data, 'cursor_location', (0.0, 0.0))
+        for n in tree.nodes:
+            n.select = (n == node)
+        tree.nodes.active = node
+        cook.request_cook(tree)
+        return {'FINISHED'}
+
+
+def _subtrees(tree, seen):
+    for n in tree.nodes:
+        sub = getattr(n, 'subtree', None) if getattr(n, 'sop_id', '') == 'subnet' else None
+        if sub is not None and sub not in seen:
+            seen.add(sub)
+            _subtrees(sub, seen)
+    return seen
+
+
 class BLENDINI_OT_filecache_save(bpy.types.Operator):
     """Cook the File Cache node's input over its frame range and write one file per frame"""
     bl_idname = "blendini.filecache_save"
@@ -1365,7 +1459,13 @@ class BLENDINI_MT_tab(bpy.types.Menu):
 
 
 def _draw_layout_items(layout):
-    """Houdini's network boxes and dots are Blender's frames and reroutes."""
+    """Digital assets, then Houdini's network boxes and dots (Blender's frames and reroutes)."""
+    hdas = hda_definitions()
+    if hdas:
+        layout.separator()
+        layout.label(text="Digital Assets", icon='ASSET_MANAGER')
+        for h in hdas:
+            layout.operator("blendini.add_hda", text=h.hda_label or h.name, icon='NODETREE').definition = h.name
     layout.separator()
     op = layout.operator("node.add_node", text="Network Box", icon='OBJECT_HIDDEN')
     op.type = "NodeFrame"
@@ -1498,6 +1598,8 @@ def _poll_texts():
 addon_keymaps = []
 
 classes = (
+    BLENDINI_OT_create_hda,
+    BLENDINI_OT_add_hda,
     BLENDINI_OT_filecache_save,
     BLENDINI_OT_set_display,
     BLENDINI_OT_toggle_bypass,

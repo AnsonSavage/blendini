@@ -172,6 +172,46 @@ def main():
             if target is not None:
                 bpy.data.objects.remove(target)
 
+    def digital_assets():
+        from blendini.bl.examples import _finish
+        tree = bpy.data.node_groups.new("hda_test", "BlendiniSOPTree")
+        other = bpy.data.node_groups.new("hda_test2", "BlendiniSOPTree")
+        box = tree.nodes.new(NODE_PREFIX + 'box')
+        sub = tree.nodes.new(NODE_PREFIX + 'subnet')
+        tree.links.new(box.outputs[0], sub.inputs[0])
+        inner = sub.subtree
+        w = inner.nodes.new(NODE_PREFIX + 'pointwrangle')
+        w.p_snippet = '@P *= 2;'
+        inp = next(n for n in inner.nodes if n.sop_id == 'subinput')
+        out = next(n for n in inner.nodes if n.sop_id == 'output')
+        inner.links.new(inp.outputs[0], w.inputs[0])
+        inner.links.new(w.outputs[0], out.inputs[0])
+        _finish(tree, sub)
+        ctx = mock.MagicMock()
+        ctx.space_data.edit_tree = tree
+        ctx.space_data.tree_type = 'BlendiniSOPTree'
+        tree.nodes.active = sub
+        assert ui.BLENDINI_OT_create_hda.execute(mock.MagicMock(label='itest_doubler'), ctx) == {'FINISHED'}
+        assert inner.is_hda and inner not in cook.all_trees()
+        ctx.space_data.edit_tree = other
+        ctx.space_data.cursor_location = (0.0, 0.0)
+        assert ui.BLENDINI_OT_add_hda.execute(mock.MagicMock(definition=inner.name), ctx) == {'FINISHED'}
+        inst = other.nodes.active
+        assert inst.subtree == inner
+        sph = other.nodes.new(NODE_PREFIX + 'sphere')
+        other.links.new(sph.outputs[0], inst.inputs[0])
+        _finish(other, inst)
+        w.p_snippet = '@P *= 3;'
+        assert abs(cook.cook_node_at(sub, 1).bbox()[1][0] - 1.5) < 1e-6
+        assert abs(cook.cook_node_at(inst, 1).bbox()[1][0] - 3.0) < 1e-6
+        assert {t.name for t in cook.trees_using(inner)} == {"hda_test", "hda_test2"}
+        for t in (tree, other):
+            target = t.target
+            bpy.data.node_groups.remove(t)
+            if target is not None:
+                bpy.data.objects.remove(target)
+        bpy.data.node_groups.remove(inner)
+
     def unregister():
         blendini.unregister()
 
@@ -183,6 +223,7 @@ def main():
     check("viewport handle bindings", handle_bindings)
     check("file cache save / load", file_cache)
     check("material slots from shop_materialpath", material_slots)
+    check("digital assets (shared subnet definitions)", digital_assets)
     check("unregister", unregister)
     print("\n%d failure(s)" % len(failures))
     return 1 if failures else 0

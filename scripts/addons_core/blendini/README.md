@@ -18,7 +18,7 @@ L-system rendered as curves with a width attribute.*
 half-edges, point clouds, volumes). Also: Attribute and Volume VOPs, native volumes with
 smoke and fire rendering, a Pyro solver, Vellum cloth and hair, RBD with constraint networks,
 a PBF fluid, heightfields, For-Each, subnets, File Cache, and Houdini-style flags, TAB menu,
-spreadsheet and viewport handles.
+spreadsheet, viewport handles and digital assets.
 
 Blendini is an open-source take on Houdini's geometry context. It uses Blender as the
 host and backend. You build a network of SOP nodes in a node editor. The node with the
@@ -121,6 +121,7 @@ See [ROADMAP.md](ROADMAP.md) for what is done and what is planned.
 | Material SOP, shop_materialpath | Material SOP or a `s@shop_materialpath = "MyMaterial";` wrangle: Blender material slots per primitive |
 | Rendering curves with width | Displayed polylines also become a Blender Curves object (radius from `f@width`, colored by `Cd`), so they render like in Houdini |
 | Performance Monitor | *Show Cook Times* in the Network panel: each node's cook time next to it (red for the slowest) |
+| Digital assets (HDAs) | *Create Digital Asset* on a subnet: a shared definition (also a Blender asset) listed in the TAB menu; every instance updates when it is edited, promoted parameters stay per instance |
 | Network boxes, dots | Network Box (Blender frame) and Dot (reroute) in the TAB menu's Layout section |
 | SOP Solver, Vellum, RBD (Bullet), FLIP, Pyro | Solver (VEX), Vellum Cloth (PBD), RBD Bullet Solver, Fluid Solver (PBF) + Particle Fluid Surface, Pyro Solver (Smoke) |
 | VDB / volumes, Volume Wrangle | Native voxel volumes (Volume, Volume from Polygons, **Volume Wrangle** with `@density`, Convert Volume). Fog volumes render as smoke through a Blender Volume object (OpenVDB). OpenVDB through Geometry Nodes for Particle Fluid Surface and VDB Reshape |

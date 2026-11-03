@@ -118,6 +118,9 @@ class BlendiniNodeTree(bpy.types.NodeTree):
                                 description="For subnetworks: the network containing the subnet node")
     show_parms_in_nodes: BoolProperty(name="Show Parameters on Nodes", default=False,
                                       description="Draw parameters inside the nodes as well as in the Parameters pane")
+    is_hda: BoolProperty(name="Digital Asset", default=False,
+                         description="This network is a digital asset definition shared by its subnet instances")
+    hda_label: StringProperty(name="Asset Name", default="")
     show_cook_times: BoolProperty(name="Show Cook Times", default=False,
                                   description="Performance monitor: draw each node's last cook time next to it "
                                               "(red for the slowest)")

@@ -87,7 +87,26 @@ def forget_written(tree):
 # Scheduling
 
 
+def trees_using(definition):
+    """Top level networks that contain (at any depth) a subnet instancing this definition."""
+    def uses(tree, seen):
+        if tree in seen:
+            return False
+        seen.add(tree)
+        for n in tree.nodes:
+            sub = getattr(n, 'subtree', None) if getattr(n, 'sop_id', '') == 'subnet' else None
+            if sub is not None and (sub == definition or uses(sub, seen)):
+                return True
+        return False
+    return [t for t in all_trees() if uses(t, set())]
+
+
 def request_cook(tree):
+    if getattr(tree, 'is_hda', False):
+        # A digital asset definition changed: recook every network that uses it.
+        for user in trees_using(tree):
+            request_cook(user)
+        return
     # Edits inside a subnetwork recook the network that contains it.
     depth = 0
     while tree is not None and getattr(tree, 'owner_tree', None) is not None and depth < 32:
@@ -607,7 +626,8 @@ def _tag_redraw():
 
 def all_trees():
     """Top level networks (subnetwork trees are cooked through their subnet node)."""
-    return [t for t in bpy.data.node_groups if t.bl_idname == TREE_ID and t.owner_tree is None]
+    return [t for t in bpy.data.node_groups if t.bl_idname == TREE_ID and t.owner_tree is None
+            and not getattr(t, 'is_hda', False)]
 
 
 def clear_cache():
