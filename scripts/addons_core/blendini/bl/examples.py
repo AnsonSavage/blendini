@@ -154,6 +154,17 @@ def _build_displace_vop(vt):
     g.location = (-400, 0)
 
 
+PIN_TO_WORLD = """\
+// Pin the first piece to the world: a constraint from a point named "world" to piece 0.
+vector p0 = point(0, "P", 0) - {0.5, 0, 0};
+int pt = addpoint(0, p0);
+setpointattrib(0, "name", pt, "world");
+int pr = addprim(0, "polyline", pt, 0);
+setprimattrib(0, "constraint_type", pr, "point");
+setprimattrib(0, "strength", pr, -1.0);
+"""
+
+
 def _node(tree, sop_id, loc, **parms):
     node = tree.nodes.new(NODE_PREFIX + sop_id)
     node.location = loc
@@ -313,6 +324,20 @@ def build_examples():
     lift = _node(t, 'xform', (0, 0), t=(0.0, 3.0, 0.0), r=(25.0, 35.0, 10.0))
     rbd = _node(t, 'rbdsolver', (0, -200))
     _chain(t, [box, fr, col, lift, rbd])
+    _finish(t, rbd)
+    trees.append(t)
+
+    t = _new_tree("rbd_chain", (108, 0, 0))
+    box = _node(t, 'box', (0, 600), size=(0.9, 0.22, 0.22))
+    cx = _node(t, 'copyxform', (0, 400), ncy=8, t=(1.0, 0.0, 0.0))
+    lift = _node(t, 'xform', (0, 200), t=(0.0, 4.0, 0.0))
+    net = _node(t, 'connectadjacentpieces', (300, 0), mode='chain', constraint_type='point', strength=-1.0)
+    pin = _node(t, 'detailwrangle', (300, -200), snippet=PIN_TO_WORLD)
+    rbd = _node(t, 'rbdsolver', (0, -400))
+    _chain(t, [box, cx, lift, rbd])
+    t.links.new(lift.outputs[0], net.inputs[0])
+    t.links.new(net.outputs[0], pin.inputs[0])
+    t.links.new(pin.outputs[0], rbd.inputs[2])
     _finish(t, rbd)
     trees.append(t)
 

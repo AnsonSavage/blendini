@@ -574,6 +574,15 @@ class TestEverydaySops(unittest.TestCase):
         out = cook_sop('lattice', [s, Geometry.from_polys(rp), Geometry.from_polys(rp * [2, 1, 1])])
         self.assertTrue(np.allclose(out.P, s.P * [2, 1, 1], atol=1e-6))
 
+    def test_connect_adjacent_pieces(self):
+        boxes = merge([cook_sop('box', t=(i * 1.1, 0, 0)) for i in range(4)] + [cook_sop('box', t=(20, 0, 0))])
+        net = cook_sop('connectadjacentpieces', [boxes], constraint_type='hinge')
+        self.assertEqual(net.num_points, 5)
+        self.assertEqual(net.prims_as_lists(), [[0, 1], [1, 2], [2, 3]])   # the far box stays free
+        self.assertEqual(list(net.attribs['prim']['constraint_type']), ['hinge'] * 3)
+        chain = cook_sop('connectadjacentpieces', [boxes], mode='chain')
+        self.assertEqual(chain.num_prims, 4)
+
     def test_skin(self):
         rows = Geometry.from_polys([[x, y, 0] for y in range(3) for x in range(4)],
                                    [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], closed=False)

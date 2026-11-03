@@ -1481,6 +1481,19 @@ def split_pieces(geo, attrib, elemtype='prim'):
     return pieces
 
 
+def piece_names(pieces, attrib):
+    """Name of every piece: its primitive attribute value (as a string), else its index."""
+    names = []
+    for i, piece in enumerate(pieces):
+        arr = piece.attribs[PRIM].get(attrib) if attrib else None
+        if arr is not None and len(arr):
+            v = arr[0]
+            names.append(str(v if arr.dtype == object else (v.tolist() if np.ndim(v) else int(v) if float(v).is_integer() else v)))
+        else:
+            names.append(str(i))
+    return names
+
+
 def REGISTRY_COOK(sop_id, geo, **parms):
     from . import cook_sop
     return cook_sop(sop_id, [geo], **parms)

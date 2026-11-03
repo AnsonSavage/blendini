@@ -24,7 +24,7 @@ and needs a real Blender session to confirm.
 - [x] Attribute VOP (visual VEX network that generates code)
 - [x] Driver expressions on parameters evaluated through VEX (`#frame * 0.1`), keyframes
 
-### SOPs (124)
+### SOPs (125)
 - [x] Primitives, manipulation, polygon, attribute, group, copy/instancing, terrain, utility,
       Blender-backed (modifiers, bmesh, BVH, Bullet, OpenVDB) — see README for the full list
 - [x] Simulations: Solver (VEX), Vellum-style cloth (PBD), RBD (Bullet), PBF fluid + meshing
@@ -67,7 +67,9 @@ and needs a real Blender session to confirm.
 - [x] Curve SOP (polygon, Catmull-Rom, Bézier — evaluated to polylines)
 - [ ] Native NURBS / Bézier primitives, volumes as a native primitive type
 - [x] RBD glue constraints (breakable FIXED constraints between neighbouring pieces)
-- [ ] Full constraint networks (hinges, springs from geometry), FLIP-style surface tension
+- [x] Constraint networks from geometry (Connect Adjacent Pieces → RBD third input: glue, fixed,
+      point, hinge, slider, spring; per-primitive strength / stiffness / axis; world pins)
+- [ ] FLIP-style fluid (surface tension, narrow band)
 - [x] Viewport handle for the Transform SOP (translate arrows + rotate dials)
 - [x] More handles: Transform scale and pivot, primitives (center / size / radius), origins,
       lengths, bounding box groups (table driven, `bl/handles.py`)

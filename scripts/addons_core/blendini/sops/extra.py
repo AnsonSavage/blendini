@@ -3,13 +3,13 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 """More everyday SOPs: Enumerate, Group by Range, Switch-If, Revolve, Skin, Path Deform,
-Distance from Geometry, Lattice."""
+Distance from Geometry, Lattice, Connect Adjacent Pieces."""
 
 import numpy as np
 
 from .base import SOP, Parm, register_sop, parse_group_pattern, CookError
 from ..core.geometry import Geometry, POINT, DETAIL
-from .modify import _in, curve_frames, CLASS_PP
+from .modify import _in, curve_frames, CLASS_PP, split_pieces, piece_names
 
 AXES = [('x', "X", ""), ('y', "Y", ""), ('z', "Z", "")]
 AXIS_INDEX = {'x': 0, 'y': 1, 'z': 2}
@@ -490,3 +490,76 @@ class LatticeSOP(SOP):
         geo.P = P + disp
         return geo
 
+
+
+CONSTRAINT_ITEMS = [
+    ('glue', "Glue (breakable fixed)", ""), ('fixed', "Hard / Fixed", ""), ('point', "Point (ball joint)", ""),
+    ('hinge', "Hinge", ""), ('slider', "Slider", ""), ('spring', "Spring", ""),
+]
+
+
+@register_sop
+class ConnectAdjacentPiecesSOP(SOP):
+    id = 'connectadjacentpieces'
+    label = "Connect Adjacent Pieces"
+    category = 'Simulation'
+    inputs = 1
+    input_labels = ("Pieces",)
+    icon = 'CONSTRAINT'
+    description = ("Constraint network for the RBD solver: a point at every piece center (with the piece "
+                   "'name') and a polyline between neighbouring pieces")
+    parms = (
+        Parm('pieceattrib', "Piece Attribute", 'string', default='name'),
+        Parm('radius', "Search Radius", 'float', default=0.0, min=0.0, soft_max=10.0,
+             description="0: automatic (1.6 x the median distance to the nearest piece)"),
+        Parm('maxpartners', "Max Partners", 'int', default=6, min=1, max=50),
+        Parm('mode', "Connect", 'enum', items=[('neighbours', "Neighbours", ""),
+                                               ('chain', "Chain (in piece order)", "")]),
+        Parm('constraint_type', "Constraint Type", 'enum', items=CONSTRAINT_ITEMS),
+        Parm('strength', "Strength", 'float', default=20.0, min=-1.0, soft_max=500.0,
+             description="Impulse that breaks the constraint (0 or less: unbreakable; glue defaults to 20)"),
+        Parm('stiffness', "Spring Stiffness", 'float', default=50.0, min=0.0, hide_when={'constraint_type': (
+            'glue', 'fixed', 'point', 'hinge', 'slider')}),
+        Parm('damping', "Spring Damping", 'float', default=0.5, min=0.0, max=1.0, hide_when={'constraint_type': (
+            'glue', 'fixed', 'point', 'hinge', 'slider')}),
+        Parm('axis', "Hinge Axis", 'vector', default=(0.0, 0.0, 1.0), hide_when={'constraint_type': (
+            'glue', 'fixed', 'point', 'slider', 'spring')}),
+    )
+
+    def cook(self, inputs, p, ctx):
+        src = _in(inputs)
+        out = Geometry()
+        if src.num_prims == 0:
+            return out
+        pieces = split_pieces(src, p.pieceattrib.strip())
+        names = piece_names(pieces, p.pieceattrib.strip())
+        centers = np.array([pc.P.mean(axis=0) if pc.num_points else np.zeros(3) for pc in pieces])
+        n = len(pieces)
+        pairs = []
+        if p.mode == 'chain':
+            pairs = [(i, i + 1) for i in range(n - 1)]
+        elif n > 1:
+            d = np.linalg.norm(centers[:, None, :] - centers[None, :, :], axis=2)
+            np.fill_diagonal(d, np.inf)
+            radius = p.radius if p.radius > 0 else 1.6 * float(np.median(d.min(axis=1)))
+            k = min(max(int(p.maxpartners), 1), n - 1)
+            seen = set()
+            for i in range(n):
+                for j in np.argsort(d[i])[:k]:
+                    j = int(j)
+                    if d[i, j] <= radius and (min(i, j), max(i, j)) not in seen:
+                        seen.add((min(i, j), max(i, j)))
+                        pairs.append((min(i, j), max(i, j)))
+        out.P = centers
+        out.attribs[POINT]['name'] = np.array(names, dtype=object)
+        if not pairs:
+            return out
+        out.add_prims([list(pr) for pr in pairs], closed=False)
+        m = len(pairs)
+        out.attribs['prim']['constraint_type'] = np.array([p.constraint_type] * m, dtype=object)
+        out.attribs['prim']['constraint_name'] = np.array([p.constraint_type] * m, dtype=object)
+        out.attribs['prim']['strength'] = np.full(m, float(p.strength))
+        out.attribs['prim']['stiffness'] = np.full(m, float(p.stiffness))
+        out.attribs['prim']['damping'] = np.full(m, float(p.damping))
+        out.attribs['prim']['axis'] = np.tile(np.asarray(p.axis, dtype=np.float64), (m, 1))
+        return out

@@ -42,9 +42,9 @@ Or step by step:
 1. Enable **Blendini** in *Preferences → Add-ons*.
 2. In the 3D viewport choose *Add → Blendini Geometry*. This creates `geo1` (an object
    plus its SOP network, like `/obj/geo1`) and opens the network in a node editor.
-3. Or use *Add → Blendini Examples* to build fourteen example networks: ripple, scatter and
+3. Or use *Add → Blendini Examples* to build fifteen example networks: ripple, scatter and
    copy, plexus, city, particles, for-each, L-system tree, Vellum cloth, fracture, RBD
-   fracture, eroded terrain, fluid dam break, VOP displacement and spiral. Press play for the simulations.
+   fracture, RBD hanging chain (constraint network pinned to the world), eroded terrain, fluid dam break, VOP displacement and spiral. Press play for the simulations.
 4. In the node editor:
    - **Tab**: Houdini-style TAB menu (start typing to search). With a node selected, the new
      node is wired to its output and takes over the display flag, like Houdini.
@@ -131,7 +131,7 @@ See [ROADMAP.md](ROADMAP.md) for what is done and what is planned.
 |-----------|------|
 | Primitive | Box, Grid, Sphere (UV / icosahedron), Tube, Torus, Circle, Line, Platonic Solids, Bound, Font\*, L-System, Curve (polygon / Catmull-Rom / Bézier from typed coordinates) |
 | Manipulate| Transform, Primitive, Mirror, Relax, Bend (bend / twist / taper), **Path Deform** (along a curve), **Lattice** (free-form deformation), Point Deform, Match Size, **Edit** (move points in Blender's Edit Mode, stored as offsets), Mountain, Point Jitter, Peak, Smooth, Ray\* |
-| Simulation| **Solver (VEX)** (SOP Solver), **Vellum Cloth (PBD)** (stretch/bend constraints, pins, ground, colliders), **RBD Bullet Solver\*** (Blender's rigid bodies in a private scene, optional breakable glue between neighbouring pieces), **Fluid Solver (PBF)** (experimental particle fluid in a box) |
+| Simulation| **Solver (VEX)** (SOP Solver), **Vellum Cloth (PBD)** (stretch/bend constraints, pins, ground, colliders), **RBD Bullet Solver\*** (Blender's rigid bodies in a private scene, optional breakable glue between neighbouring pieces, **constraint networks** on the third input: glue / fixed / point / hinge / slider / spring polylines, pins to the world), **Connect Adjacent Pieces** (builds constraint networks), **Fluid Solver (PBF)** (experimental particle fluid in a box) |
 | Polygon   | **Voronoi Fracture\***, Particle Fluid Surface\* (OpenVDB meshing), **VDB Reshape / Smooth SDF\*** (dilate, erode, smooth, fillet), VDB Combine\* (SDF boolean), Add, Clean, Ends, Fuse, Facet, PolyFill\*, PolyBridge\*, Dissolve\*, Shrinkwrap\* (convex hull), Triangulate 2D\* (Delaunay), Divide, Reverse, PolyExtrude, PolyWire, Sweep, Revolve, Skin, Resample, Carve, Convert Line, PolyPath, Subdivide\*, PolyBevel\*, Boolean\*, Remesh\*, PolyReduce\*, Clip\* |
 | Attribute | Attribute Create / Delete / Rename / Copy / Promote / Randomize / Noise / Transfer / Blur / Interpolate / String Edit, Name, Rest Position, Attribute from Map\*, Color, Normal, Connectivity, Enumerate, Distance from Geometry, Measure, UV Texture, UV Unwrap\* (Smart UV Project / Unwrap / Cube), PolyFrame, Trail (velocity, also feeds Blender motion blur) |
 | Terrain   | HeightField, HeightField Noise (fBm / ridged), HeightField Erode (thermal + flow-based hydraulic) |

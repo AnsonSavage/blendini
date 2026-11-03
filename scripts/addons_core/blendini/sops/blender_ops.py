@@ -607,13 +607,104 @@ def _add_rigid_body(scene, ob, kind):
         bpy.ops.rigidbody.object_add(type=kind)
 
 
+CONSTRAINT_TYPES = [
+    ('glue', "Glue (breakable fixed)", ""), ('fixed', "Hard / Fixed", ""), ('point', "Point (ball joint)", ""),
+    ('hinge', "Hinge", "Rotates around the primitive's 'axis' attribute (default Z)"),
+    ('slider', "Slider", ""), ('spring', "Spring", "'stiffness' and 'damping' primitive attributes"),
+]
+_BLENDER_CONSTRAINT = {'glue': 'FIXED', 'fixed': 'FIXED', 'hard': 'FIXED', 'point': 'POINT', 'ball': 'POINT',
+                       'hinge': 'HINGE', 'slider': 'SLIDER', 'spring': 'GENERIC_SPRING', 'soft': 'GENERIC_SPRING'}
+
+
+def _add_constraint(scene, name, ob1, ob2, kind, location, strength=-1.0, axis=None, stiffness=50.0, damping=0.5):
+    """Rigid body constraint (an empty in the simulation scene) between two objects."""
+    from mathutils import Vector
+    empty = bpy.data.objects.new(name, None)
+    empty.location = location
+    if axis is not None and Vector(axis).length > 1e-9:
+        empty.rotation_mode = 'QUATERNION'
+        empty.rotation_quaternion = Vector(axis).normalized().to_track_quat('Z', 'Y')
+    scene.collection.objects.link(empty)
+    btype = _BLENDER_CONSTRAINT.get(kind, 'FIXED')
+    with bpy.context.temp_override(scene=scene, object=empty, active_object=empty, selected_objects=[empty],
+                                   selected_editable_objects=[empty]):
+        bpy.ops.rigidbody.constraint_add(type=btype)
+    c = empty.rigid_body_constraint
+    c.object1 = ob1
+    c.object2 = ob2
+    if kind == 'glue' and strength <= 0:
+        strength = 20.0
+    if strength > 0:
+        c.use_breaking = True
+        c.breaking_threshold = strength
+    if btype == 'GENERIC_SPRING':
+        try:
+            c.spring_type = 'SPRING2'
+        except (TypeError, AttributeError):
+            pass
+        for ax in 'xyz':
+            setattr(c, 'use_spring_' + ax, True)
+            setattr(c, 'spring_stiffness_' + ax, stiffness)
+            setattr(c, 'spring_damping_' + ax, damping)
+            setattr(c, 'use_spring_ang_' + ax, True)
+            setattr(c, 'spring_stiffness_ang_' + ax, stiffness)
+            setattr(c, 'spring_damping_ang_' + ax, damping)
+    return empty
+
+
+def constraint_pairs(network, names, centers, default_type='glue'):
+    """Read a constraint network: 2-point polylines whose end points name pieces (point 'name'
+    attribute, else the nearest piece center). Returns dicts with a, b (piece index or -1 for
+    the world), type, strength, axis, stiffness, damping, location."""
+    from ..core.geometry import POINT, PRIM
+    out = []
+    if network is None or network.num_prims == 0 or not len(centers):
+        return out
+    pnames = network.attribs[POINT].get('name')
+    index = {str(n): i for i, n in enumerate(names)}
+    prima = network.attribs[PRIM]
+
+    def piece_of(pt):
+        if pnames is not None:
+            nm = str(pnames[pt])
+            if nm in index:
+                return index[nm]
+            if nm in ('', 'world', '__world__'):
+                return -1
+        d = np.linalg.norm(np.asarray(centers) - network.P[pt], axis=1)
+        return int(np.argmin(d))
+
+    def prim_value(name, i, default):
+        arr = prima.get(name)
+        if arr is None:
+            return default
+        v = arr[i]
+        return v if arr.dtype == object else (v.tolist() if np.ndim(v) else float(v))
+    for i in range(network.num_prims):
+        pts = network.prim_points(i)
+        for k in range(len(pts) - 1):
+            a, b = piece_of(pts[k]), piece_of(pts[k + 1])
+            if a == b:
+                continue
+            if a < 0 or b < 0:
+                # Pinned to the world: the joint sits at the world point.
+                location = network.P[pts[k] if a < 0 else pts[k + 1]].copy()
+            else:
+                location = (network.P[pts[k]] + network.P[pts[k + 1]]) / 2
+            out.append(dict(a=a, b=b, type=str(prim_value('constraint_type', i, default_type)).lower(),
+                            strength=float(prim_value('strength', i, -1.0)),
+                            axis=prim_value('axis', i, None), stiffness=float(prim_value('stiffness', i, 50.0)),
+                            damping=float(prim_value('damping', i, 0.5)), location=location))
+    return out
+
+
 @register_sop
 class RBDSolverSOP(SOP):
     id = 'rbdsolver'
     label = "RBD Bullet Solver"
     category = 'Simulation'
-    inputs = 2
-    input_labels = ("Pieces", "Static Colliders")
+    inputs = 3
+    input_labels = ("Pieces", "Static Colliders", "Constraint Network")
     icon = 'RIGID_BODY'
     time_dependent = True
     description = "Rigid body simulation of pieces (by 'name'/'class' attribute or connectivity) using Bullet"
@@ -636,6 +727,8 @@ class RBDSolverSOP(SOP):
              description="Shrink collision shapes so pieces that touch at the start don't push each other apart"),
         Parm('margin', "Collision Margin", 'float', default=0.001, min=0, soft_max=0.1,
              description="Small margins stop touching pieces (e.g. from a fracture) from pushing apart"),
+        Parm('contype', "Default Constraint Type", 'enum', items=CONSTRAINT_TYPES,
+             description="Used for constraint network polylines without a 'constraint_type' attribute"),
     )
 
     @staticmethod
@@ -655,7 +748,7 @@ class RBDSolverSOP(SOP):
             frames[f] = np.array([np.array(bpy.data.objects[name].matrix_world) for name in state['objects']])
             state['last'] = f
 
-    def _build(self, pieces, colliders, p, state, start, fps):
+    def _build(self, pieces, colliders, p, state, start, fps, network=None, names=()):
         from ..bl.mesh_io import geo_to_mesh
         name = "_blendini_rbd_%x" % id(state)
         scene = bpy.data.scenes.new(name)
@@ -720,6 +813,8 @@ class RBDSolverSOP(SOP):
             ob.rigid_body.restitution = p.bounce
         if p.glue and len(objs) > 1:
             self._glue(scene, objs, np.array(centers), p)
+        if network is not None and network.num_prims:
+            self._network(scene, objs, np.array(centers), list(names), network, p)
         state['objects'] = objs
         state['centers'] = np.array(centers)
         state['frames'] = {}
@@ -740,18 +835,39 @@ class RBDSolverSOP(SOP):
                 if d[i, j] <= radius:
                     pairs.add((min(i, int(j)), max(i, int(j))))
         for a, b in sorted(pairs):
-            empty = bpy.data.objects.new("%s_glue_%d_%d" % (scene.name, a, b), None)
-            empty.location = (centers[a] + centers[b]) / 2
-            scene.collection.objects.link(empty)
-            with bpy.context.temp_override(scene=scene, object=empty, active_object=empty, selected_objects=[empty],
-                                           selected_editable_objects=[empty]):
-                bpy.ops.rigidbody.constraint_add(type='FIXED')
-            c = empty.rigid_body_constraint
-            c.object1 = bpy.data.objects[objs[a]]
-            c.object2 = bpy.data.objects[objs[b]]
-            c.use_breaking = True
-            c.breaking_threshold = p.gluestrength
+            _add_constraint(scene, "%s_glue_%d_%d" % (scene.name, a, b), bpy.data.objects[objs[a]],
+                            bpy.data.objects[objs[b]], 'glue', (centers[a] + centers[b]) / 2,
+                            strength=max(p.gluestrength, 1e-6))
         return len(pairs)
+
+    def _network(self, scene, objs, centers, names, network, p):
+        """Constraints from a constraint network geometry (third input)."""
+        anchors = {}
+        count = 0
+        for k, c in enumerate(constraint_pairs(network, names, centers, p.contype)):
+            ends = []
+            for idx in (c['a'], c['b']):
+                if idx >= 0:
+                    ends.append(bpy.data.objects[objs[idx]])
+                    continue
+                # World anchor: a tiny passive body that doesn't collide with the pieces.
+                key = tuple(np.round(c['location'], 6))
+                if key not in anchors:
+                    mesh = bpy.data.meshes.new("%s_anchor%d" % (scene.name, len(anchors)))
+                    ob = bpy.data.objects.new(mesh.name, mesh)
+                    ob.location = c['location']
+                    scene.collection.objects.link(ob)
+                    _add_rigid_body(scene, ob, 'PASSIVE')
+                    ob.rigid_body.collision_shape = 'SPHERE'
+                    groups = [False] * 20
+                    groups[19] = True
+                    ob.rigid_body.collision_collections = groups
+                    anchors[key] = ob
+                ends.append(anchors[key])
+            _add_constraint(scene, "%s_con_%d" % (scene.name, k), ends[0], ends[1], c['type'], c['location'],
+                            strength=c['strength'], axis=c['axis'], stiffness=c['stiffness'], damping=c['damping'])
+            count += 1
+        return count
 
     def cook(self, inputs, p, ctx):
         from ..core.geometry import merge
@@ -762,11 +878,13 @@ class RBDSolverSOP(SOP):
             # Packed pieces (Pack / Assemble) are simulated as their real geometry.
             geo = unpack(geo)
         colliders = _in(inputs, 1) if len(inputs) > 1 and inputs[1] is not None else None
+        network = _in(inputs, 2) if len(inputs) > 2 and inputs[2] is not None else None
         state = ctx.state
         frame = int(round(ctx.frame))
         start = int(p.startframe)
         key = (tuple(sorted(p.items())), geo.num_points, geo.num_prims, float(geo.P.sum()) if geo.num_points else 0.0,
-               colliders.num_points if colliders is not None else 0)
+               colliders.num_points if colliders is not None else 0,
+               (network.num_prims, float(network.P.sum())) if network is not None and network.num_points else None)
         from ..bl.cook import in_frame_handler
         deferred = in_frame_handler()
         if state.get('key') != key or bpy.data.scenes.get(state.get('scene', '')) is None:
@@ -780,7 +898,8 @@ class RBDSolverSOP(SOP):
             state['pieces'] = pieces
             if not pieces:
                 return geo
-            self._build(pieces, colliders, p, state, start, ctx.fps)
+            from .modify import piece_names
+            self._build(pieces, colliders, p, state, start, ctx.fps, network, piece_names(pieces, p.pieceattrib.strip()))
             # Bake ahead right away, so frames reached later from the frame change handler
             # (playback, renders) are already in the cache.
             self._bake(state, start, max(frame, self._bake_end(start)))
