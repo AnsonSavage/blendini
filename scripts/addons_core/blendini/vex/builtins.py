@@ -1168,11 +1168,78 @@ def _kdtree(I, P):
     return tree
 
 
+def _hash_search(P, query, maxdist, maxpts, lanes, max_pairs=40_000_000):
+    """Radius search with a vectorized spatial hash (all lanes at once). Returns the per-lane
+    results, or None when the search radius is too large for it (callers fall back)."""
+    lanes = np.asarray(lanes, dtype=np.int64)
+    results = [np.zeros(0, dtype=np.int64)] * len(query)
+    if len(lanes) == 0:
+        return results
+    r = np.asarray(maxdist, dtype=np.float64)[lanes]
+    if not np.all(np.isfinite(r)) or r.max() >= 1e17:
+        return None
+    h = float(r.max())
+    if h <= 0:
+        return results
+    Q = query[lanes]
+    lo = np.minimum(P.min(axis=0), Q.min(axis=0))
+    cp = np.floor((P - lo) / h).astype(np.int64)
+    cq = np.floor((Q - lo) / h).astype(np.int64)
+    dims = np.maximum(cp.max(axis=0), cq.max(axis=0)) + 3
+    if float(np.prod(dims.astype(np.float64))) > 9e18:
+        return None
+
+    def key(c):
+        return ((c[:, 0] + 1) * dims[1] + (c[:, 1] + 1)) * dims[2] + (c[:, 2] + 1)
+    kp = key(cp)
+    order = np.argsort(kp, kind='stable')
+    sk = kp[order]
+    Is, Js = [], []
+    total = 0
+    for dx in (-1, 0, 1):
+        for dy in (-1, 0, 1):
+            for dz in (-1, 0, 1):
+                nk = key(cq + np.array([dx, dy, dz]))
+                start = np.searchsorted(sk, nk, side='left')
+                counts = np.searchsorted(sk, nk, side='right') - start
+                m = int(counts.sum())
+                if m == 0:
+                    continue
+                total += m
+                if total > max_pairs:
+                    return None
+                i_idx = np.repeat(np.arange(len(Q)), counts)
+                offs = np.arange(m) - np.repeat(np.cumsum(counts) - counts, counts)
+                Is.append(i_idx)
+                Js.append(order[np.repeat(start, counts) + offs])
+    if not Is:
+        return results
+    I = np.concatenate(Is)
+    J = np.concatenate(Js)
+    d2 = np.sum((Q[I] - P[J]) ** 2, axis=1)
+    keep = d2 <= r[I] ** 2
+    I, J, d2 = I[keep], J[keep], d2[keep]
+    srt = np.lexsort((J, d2, I))          # by query, then distance (ties by point number)
+    I, J = I[srt], J[srt]
+    first = np.searchsorted(I, np.arange(len(Q)), side='left')
+    rank = np.arange(len(I)) - first[I]
+    k = np.asarray(maxpts, dtype=np.int64)[lanes]
+    keep = rank < k[I]
+    I, J = I[keep], J[keep]
+    counts = np.bincount(I, minlength=len(Q))
+    for row, part in enumerate(np.split(J, np.cumsum(counts)[:-1])):
+        results[lanes[row]] = part.astype(np.int64)
+    return results
+
+
 def _near_search(P, query, maxdist, maxpts, lanes, tree=None):
     """Nearest neighbour search. Returns list of sorted index arrays per lane."""
     results = [np.zeros(0, dtype=np.int64)] * len(query)
     if len(P) == 0:
         return results
+    fast = _hash_search(np.asarray(P, dtype=np.float64), np.asarray(query, dtype=np.float64), maxdist, maxpts, lanes)
+    if fast is not None:
+        return fast
     if tree is not None:
         q = query.tolist()
         for lane in np.asarray(lanes).tolist():
