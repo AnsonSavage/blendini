@@ -24,7 +24,7 @@ and needs a real Blender session to confirm.
 - [x] Attribute VOP (visual VEX network that generates code)
 - [x] Driver expressions on parameters evaluated through VEX (`#frame * 0.1`), keyframes
 
-### SOPs (113)
+### SOPs (116)
 - [x] Primitives, manipulation, polygon, attribute, group, copy/instancing, terrain, utility,
       Blender-backed (modifiers, bmesh, BVH, Bullet, OpenVDB) — see README for the full list
 - [x] Simulations: Solver (VEX), Vellum-style cloth (PBD), RBD (Bullet), PBF fluid + meshing

@@ -2650,3 +2650,52 @@ class AttribStringEditSOP(SOP):
             return geo
         geo.attribs[p['class']][p.attrib] = np.array([str(s).replace(p.find, p.replace) for s in arr], dtype=object)
         return geo
+
+
+@register_sop
+class GroupExpandSOP(SOP):
+    id = 'groupexpand'
+    label = "Group Expand"
+    category = 'Group'
+    inputs = 1
+    icon = 'SELECT_EXTEND'
+    parms = (
+        Parm('group', "Base Group", 'string', default='group1'),
+        Parm('grouptype', "Group Type", 'enum', items=CLASS_PP),
+        Parm('steps', "Steps (negative shrinks)", 'int', default=1, soft_min=-10, soft_max=10),
+        Parm('outname', "Output Group", 'string', default='', description="Empty = overwrite the base group"),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs).copy()
+        cls = p.grouptype
+        mask = parse_group_pattern(geo, cls, p.group).copy()
+        E = geo.edges()
+        vp = geo.vertex_prim()
+        for _ in range(abs(int(p.steps))):
+            if cls == POINT:
+                grown = mask.copy()
+                if len(E):
+                    if p.steps > 0:
+                        grown[E[:, 1][mask[E[:, 0]]]] = True
+                        grown[E[:, 0][mask[E[:, 1]]]] = True
+                    else:
+                        grown[E[:, 0][~mask[E[:, 1]]]] = False
+                        grown[E[:, 1][~mask[E[:, 0]]]] = False
+                mask = grown
+            else:
+                # Primitives sharing a point with the group (grow) / touching outside points (shrink).
+                pt_in = np.zeros(geo.num_points, dtype=bool)
+                pt_out = np.zeros(geo.num_points, dtype=bool)
+                pt_in[geo.vtx_point[mask[vp]]] = True
+                pt_out[geo.vtx_point[~mask[vp]]] = True
+                if p.steps > 0:
+                    touch = np.zeros(geo.num_prims, dtype=bool)
+                    touch[vp[pt_in[geo.vtx_point]]] = True
+                    mask = mask | touch
+                else:
+                    touch = np.zeros(geo.num_prims, dtype=bool)
+                    touch[vp[pt_out[geo.vtx_point]]] = True
+                    mask = mask & ~touch
+        geo.groups[cls][(p.outname or p.group).strip() or 'group1'] = mask
+        return geo

@@ -1183,3 +1183,75 @@ class PolyBridgeSOP(SOP):
             if p.divisions > 0 and res.get('edges'):
                 bmesh.ops.subdivide_edgering(bm, edges=res['edges'], cuts=p.divisions)
         return _with_bmesh(geo, fn)
+
+
+@register_sop
+class ShrinkwrapSOP(SOP):
+    id = 'shrinkwrap'
+    label = "Shrinkwrap (Convex Hull)"
+    category = 'Polygon'
+    inputs = 1
+    icon = 'MESH_ICOSPHERE'
+    description = "Convex hull of the input points (Houdini's Shrinkwrap SOP)"
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs)
+        if geo.num_points < 4:
+            raise CookError("Shrinkwrap needs at least 4 points")
+        pts = Geometry()
+        pts.P = geo.P
+
+        def fn(bm):
+            res = bmesh.ops.convex_hull(bm, input=bm.verts[:], use_existing_faces=False)
+            # Drop interior points that the hull didn't use.
+            unused = [v for v in res.get('geom_interior', []) if isinstance(v, bmesh.types.BMVert)]
+            unused += [v for v in bm.verts if not v.link_faces]
+            if unused:
+                bmesh.ops.delete(bm, geom=list(set(unused)), context='VERTS')
+        return _with_bmesh(pts, fn)
+
+
+@register_sop
+class Triangulate2DSOP(SOP):
+    id = 'triangulate2d'
+    label = "Triangulate 2D"
+    category = 'Polygon'
+    inputs = 1
+    icon = 'MOD_TRIANGULATE'
+    description = "Delaunay triangulation of the points, projected onto a plane"
+    parms = (
+        Parm('plane', "Projection Plane", 'enum', items=[('ZX', "ZX (ground)", ""), ('XY', "XY", ""), ('YZ', "YZ", "")]),
+        Parm('keepprims', "Use Existing Polylines as Constraints", 'bool', default=False),
+    )
+
+    def cook(self, inputs, p, ctx):
+        from mathutils import Vector
+        from mathutils.geometry import delaunay_2d_cdt
+        geo = _in(inputs)
+        if geo.num_points < 3:
+            raise CookError("Triangulate 2D needs at least 3 points")
+        axes = {'ZX': (0, 2), 'XY': (0, 1), 'YZ': (1, 2)}[p.plane]
+        pts2 = [Vector((float(x[axes[0]]), float(x[axes[1]]))) for x in geo.P]
+        edges = []
+        if p.keepprims:
+            for i in range(geo.num_prims):
+                pp = geo.prim_points(i).tolist()
+                edges += list(zip(pp[:-1], pp[1:]))
+                if geo.prim_closed[i]:
+                    edges.append((pp[-1], pp[0]))
+        verts, out_edges, faces, orig_verts, _oe, _of = delaunay_2d_cdt(pts2, edges, [], 0, 1e-9)
+        # Map output vertices back to input points (CDT may merge duplicates).
+        index = [ov[0] if ov else -1 for ov in orig_verts]
+        out = geo.copy()
+        out._delete_prims_only(np.ones(out.num_prims, dtype=bool))
+        tris = [[index[i] for i in f] for f in faces if all(index[i] >= 0 for i in f)]
+        if tris:
+            out.add_prims(tris)
+            # Face winding: make normals point along the plane's normal axis.
+            n = out.prim_normals()
+            normal_axis = 3 - sum(axes)
+            if np.mean(n[:, normal_axis]) < 0:
+                from .modify import ReverseSOP
+                from . import default_parms
+                out = ReverseSOP().cook([out], default_parms('reverse'), ctx)
+        return out
