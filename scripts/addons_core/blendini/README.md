@@ -77,7 +77,8 @@ Or step by step:
    - **Viewport handles**: select a network's output object, and the active node's handle
      appears in the 3D view, as in Houdini. Transform has translate arrows, small pivot arrows,
      rotate dials and scale boxes. Box, Sphere, Tube, Platonic, Torus, Circle and Grid have
-     center arrows and size/radius boxes. Mirror, Revolve, Line and Bend have origin arrows
+     center arrows and size/radius boxes; Volume and Pyro Solver containers too. Mirror, Revolve, Line
+     and Bend have origin arrows; Soft Transform and Magnet translate arrows
      (Line and Bend also get a length box). Group Create and Delete in Bounding Box mode get
      an editable box.
    - 3D viewport sidebar → *Blendini* tab: a Houdini-style **Create shelf** (Box, Sphere,

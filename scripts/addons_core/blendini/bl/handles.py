@@ -49,6 +49,11 @@ HANDLES = {
     'revolve': [('move', 'origin', {})],
     'line': [('move', 'origin', {}), ('length', 'dist', {'at': ('origin',), 'dir': 'dir'})],
     'bend': [('move', 'origin', {}), ('length', 'length', {'at': ('origin',), 'axis': 'axis'})],
+    'softxform': [('move', 't', {})],
+    'magnet': [('move', 't', {'when': {'mode': 'translate'}})],
+    'volume': [('move', 't', {'when': {'usebounds': False}}),
+               ('size', 'size', {'at': ('t',), 'factor': 0.5, 'when': {'usebounds': False}})],
+    'pyrosolver': [('move', 't', {}), ('size', 'size', {'at': ('t',), 'factor': 0.5})],
 }
 
 
