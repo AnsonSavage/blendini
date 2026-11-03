@@ -1355,7 +1355,7 @@ def on_frame_change(scene, depsgraph=None):
         return
     for tree in cook.all_trees():
         if tree.auto_cook:
-            cook.cook_tree(tree)
+            cook.cook_from_frame_handler(tree)
 
 
 @persistent
@@ -1368,7 +1368,15 @@ def on_load_post(*_args):
         print("Blendini:", ex)
     for tree in cook.all_trees():
         if tree.auto_cook:
-            cook.request_cook(tree)
+            if bpy.app.background:
+                # No timers in background mode (e.g. command line renders): cook now so
+                # simulations are built and baked before frames are rendered.
+                try:
+                    cook.cook_tree(tree)
+                except Exception as ex:
+                    print("Blendini: cook on load failed for %s: %s" % (tree.name, ex))
+            else:
+                cook.request_cook(tree)
 
 
 @persistent

@@ -575,24 +575,29 @@ def _inside_faces(out, original):
 
 
 def _rbd_cleanup(state):
+    """Remove a private simulation scene and everything it owns.
+
+    The scene is removed *before* its objects: removing objects that belong to a rigid body
+    world while another rigid body scene exists crashes Blender (double free).
+    """
     scene = bpy.data.scenes.get(state.get('scene', ''))
     if scene is not None:
         objs = list(scene.collection.objects)
-        if scene.rigidbody_world is not None and scene.rigidbody_world.collection is not None:
-            coll = scene.rigidbody_world.collection
-        else:
-            coll = None
+        meshes = [ob.data for ob in objs]
+        rbw = scene.rigidbody_world
+        colls = [c for c in ((rbw.collection, rbw.constraints) if rbw is not None else ()) if c is not None]
+        bpy.data.scenes.remove(scene)
         for ob in objs:
-            mesh = ob.data
             bpy.data.objects.remove(ob)
+        for mesh in meshes:
             if mesh is not None and mesh.users == 0:
                 bpy.data.meshes.remove(mesh)
-        constraints = scene.rigidbody_world.constraints if scene.rigidbody_world is not None else None
-        bpy.data.scenes.remove(scene)
-        if coll is not None and coll.users == 0:
-            bpy.data.collections.remove(coll)
-        if constraints is not None and constraints.users == 0:
-            bpy.data.collections.remove(constraints)
+        for coll in colls:
+            try:
+                if coll.users == 0:
+                    bpy.data.collections.remove(coll)
+            except ReferenceError:
+                pass
     state.clear()
 
 
@@ -632,6 +637,23 @@ class RBDSolverSOP(SOP):
         Parm('margin', "Collision Margin", 'float', default=0.001, min=0, soft_max=0.1,
              description="Small margins stop touching pieces (e.g. from a fracture) from pushing apart"),
     )
+
+    @staticmethod
+    def _bake_end(start):
+        scene = bpy.context.scene
+        return min(scene.frame_end, start + 500) if scene is not None else start
+
+    @staticmethod
+    def _bake(state, start, target):
+        """Step the private simulation scene up to target, caching every frame's transforms."""
+        scene = bpy.data.scenes.get(state.get('scene', ''))
+        if scene is None:
+            return
+        frames = state['frames']
+        for f in range(max(state['last'] + 1, start), target + 1):
+            scene.frame_set(f)
+            frames[f] = np.array([np.array(bpy.data.objects[name].matrix_world) for name in state['objects']])
+            state['last'] = f
 
     def _build(self, pieces, colliders, p, state, start, fps):
         from ..bl.mesh_io import geo_to_mesh
@@ -745,7 +767,13 @@ class RBDSolverSOP(SOP):
         start = int(p.startframe)
         key = (tuple(sorted(p.items())), geo.num_points, geo.num_prims, float(geo.P.sum()) if geo.num_points else 0.0,
                colliders.num_points if colliders is not None else 0)
+        from ..bl.cook import in_frame_handler
+        deferred = in_frame_handler()
         if state.get('key') != key or bpy.data.scenes.get(state.get('scene', '')) is None:
+            if deferred:
+                # Building the simulation scene inside a frame change is unsafe: do it right after.
+                ctx.uncacheable = True
+                return geo
             _rbd_cleanup(state)
             state['key'] = key
             pieces = split_pieces(geo, p.pieceattrib.strip())
@@ -753,24 +781,27 @@ class RBDSolverSOP(SOP):
             if not pieces:
                 return geo
             self._build(pieces, colliders, p, state, start, ctx.fps)
+            # Bake ahead right away, so frames reached later from the frame change handler
+            # (playback, renders) are already in the cache.
+            self._bake(state, start, max(frame, self._bake_end(start)))
         pieces = state['pieces']
         if frame <= start:
             return geo
         frames = state['frames']
+        if frame not in frames and deferred:
+            # Stepping the simulation scene inside a frame change is unsafe: show the closest
+            # cached frame now and simulate right after the frame change.
+            ctx.uncacheable = True
+            cached = [f for f in frames if f <= frame]
+            if not cached:
+                return geo
+            frame = max(cached)
         if frame not in frames:
-            scene = bpy.data.scenes[state['scene']]
             if frame < state['last']:
                 # Scrubbing backwards past the cache: rebuild.
                 _rbd_cleanup(state)
                 return self.cook(inputs, p, ctx)
-            for f in range(max(state['last'] + 1, start), frame + 1):
-                scene.frame_set(f)
-                mats = []
-                for name in state['objects']:
-                    ob = bpy.data.objects[name]
-                    mats.append(np.array(ob.matrix_world))
-                frames[f] = np.array(mats)
-                state['last'] = f
+            self._bake(state, start, max(frame, self._bake_end(start)))
         mats = frames[frame]
         out_pieces = []
         for piece, c, m in zip(pieces, state['centers'], mats):

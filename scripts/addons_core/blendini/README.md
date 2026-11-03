@@ -252,6 +252,12 @@ cd scripts/addons_core
 python -m unittest blendini.tests.test_blendini
 ```
 
+And the integration test inside Blender (examples, frames, save/reload, every SOP, operators):
+
+```sh
+blender --background --factory-startup --python scripts/addons_core/blendini/tests/blender_integration.py
+```
+
 ## Security
 
 Opening a .blend file with Blendini networks never runs Python from the file. VEX is

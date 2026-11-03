@@ -27,6 +27,9 @@ _states = {}
 _pending = set()
 _timer_registered = False
 _cooking = False
+# True while cooking from Blender's frame change handler. Some Blender operations (stepping
+# another scene, adding rigid bodies) are unsafe there; SOPs check this and defer that work.
+_in_frame_handler = False
 
 
 def _tree_key(tree):
@@ -61,6 +64,19 @@ def forget_node(node):
 
 def is_cooking():
     return _cooking
+
+
+def in_frame_handler():
+    return _in_frame_handler
+
+
+def cook_from_frame_handler(tree):
+    global _in_frame_handler
+    _in_frame_handler = True
+    try:
+        return cook_tree(tree)
+    finally:
+        _in_frame_handler = False
 
 
 def forget_written(tree):
@@ -308,6 +324,10 @@ def cook_node(node, ctx_base, visiting=None):
         if error:
             # Don't keep a signature for failed cooks so fixing upstream retries.
             _cache[key]['sig'] = ('error',) + sig
+        elif getattr(ctx, 'uncacheable', False):
+            # A provisional result (work deferred out of a frame handler): cook again soon.
+            _cache[key]['sig'] = ('provisional',) + sig
+            request_cook(node.id_data)
         return geo, sig
     finally:
         visiting.discard(key)

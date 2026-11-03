@@ -36,6 +36,12 @@ and needs a real Blender session to confirm.
 - [x] Viewport overlays (point/prim numbers, normals, template wireframe), attribute visualizer
 - [x] Houdini-like theme, layout, Create shelf, application template, default `Cd` material
 
+### Stability
+- [x] Integration test inside Blender (`tests/blender_integration.py`)
+- [x] Fixed: crash when an RBD simulation stepped from the frame change handler, and when
+      removing one rigid body scene while another existed; RBD now pre-bakes the scene range
+      (also makes command line renders correct)
+
 ## Next (in priority order)
 
 - [x] For-Each "by count" (run N iterations and merge, without feedback)
