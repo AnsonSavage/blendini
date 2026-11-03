@@ -578,6 +578,11 @@ def cook_tree(tree, frame=None):
             obj.data.update()
             from .display import sync_instances, visualize_attribute
             sync_instances(tree, obj, geo)
+            try:
+                from .curves_io import sync_curves
+                sync_curves(tree, obj, geo)
+            except (RuntimeError, ReferenceError, AttributeError) as ex:
+                print("Blendini: curve display failed:", ex)
             visualize_attribute(obj, geo, tree.visualize.strip())
             _cache[tkey] = (sig, obj.data.name)
         try:

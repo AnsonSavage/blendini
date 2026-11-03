@@ -41,6 +41,8 @@ and needs a real Blender session to confirm.
 - [x] Parameter pane, geometry info, spreadsheet, VEX status bar in the text editor
 - [x] Viewport overlays (point/prim numbers, normals, template wireframe), attribute visualizer
 - [x] Houdini-like theme, layout, Create shelf, application template, default `Cd` material
+- [x] Polylines render as curves (width attribute), volumes as smoke / fire, material slots from
+      shop_materialpath
 
 ### Stability
 - [x] Integration test inside Blender (`tests/blender_integration.py`)
