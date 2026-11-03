@@ -445,6 +445,16 @@ class TestMoreSops(unittest.TestCase):
         self.assertEqual(e.num_points, hf.num_points)
         self.assertGreater(np.ptp(n.P[:, 1]), 0.1)
 
+    def test_attribute_interpolate_sticks_to_deforming_surface(self):
+        from blendini.core.primuv import prim_uv
+        src = cook_sop('grid', rows=6, cols=6)
+        pts = cook_sop('scatter', [src], npts=200)
+        np.testing.assert_allclose(cook_sop('attribinterpolate', [pts, src]).P, pts.P, atol=1e-9)
+        deformed = cook_sop('mountain', [src], height=0.5)
+        moved = cook_sop('attribinterpolate', [pts, deformed])
+        uv = prim_uv(deformed, pts.attribs['point']['sourceprim'], moved.P)
+        np.testing.assert_allclose(uv[:, :2], pts.attribs['point']['sourceprimuv'][:, :2], atol=1e-6)
+
     def test_obj_roundtrip(self):
         import os
         import tempfile

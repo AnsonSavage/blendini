@@ -1097,7 +1097,9 @@ class ScatterSOP(SOP):
         out.P = P
         out.attribs[POINT]['N'] = N
         if p.outputsourceprim:
+            from ..core.primuv import prim_uv
             out.attribs[POINT]['sourceprim'] = tri_prim[ti].astype(np.int64)
+            out.attribs[POINT]['sourceprimuv'] = prim_uv(geo, tri_prim[ti], P)
         return out
 
 
@@ -2481,3 +2483,45 @@ class DeleteSOP(SOP):
         else:
             out.delete_points(mask)
         return out
+
+
+@register_sop
+class AttribInterpolateSOP(SOP):
+    id = 'attribinterpolate'
+    label = "Attribute Interpolate"
+    category = 'Attribute'
+    inputs = 2
+    input_labels = ("Points (with sourceprim / sourceprimuv)", "Geometry to Interpolate From")
+    icon = 'PIVOT_BOUNDBOX'
+    description = "Stick points to a (deforming) surface using the sourceprim / sourceprimuv from Scatter"
+    parms = (
+        Parm('attribs', "Point Attributes", 'string', default='P N Cd', description="Wildcards allowed"),
+        Parm('primattrib', "Primitive Attribute", 'string', default='sourceprim'),
+        Parm('uvattrib', "UV Attribute", 'string', default='sourceprimuv'),
+    )
+
+    def cook(self, inputs, p, ctx):
+        import fnmatch
+        from ..core.primuv import interpolate
+        pts = _in(inputs, 0).copy()
+        src = _in(inputs, 1)
+        prims = pts.attribs[POINT].get(p.primattrib)
+        uv = pts.attribs[POINT].get(p.uvattrib)
+        if prims is None or uv is None:
+            raise CookError("Points need '%s' and '%s' attributes (from Scatter)" % (p.primattrib, p.uvattrib))
+        if prims.ndim > 1:
+            prims = prims[:, 0]
+        prims = prims.astype(np.int64)
+        pats = p.attribs.split()
+        for cls in (POINT, VERTEX):
+            for name, arr in src.attribs[cls].items():
+                if arr.dtype == object or not any(fnmatch.fnmatchcase(name, pat) for pat in pats):
+                    continue
+                if cls == VERTEX and name in src.attribs[POINT]:
+                    continue
+                vals = interpolate(src, cls, arr, prims, uv)
+                if name == 'N':
+                    ln = np.linalg.norm(vals, axis=1, keepdims=True)
+                    vals = vals / np.where(ln == 0, 1, ln)
+                pts.attribs[POINT][name] = vals if name != 'P' else vals.astype(np.float64)
+        return pts
