@@ -81,6 +81,8 @@ defaults, e.g. white for `Cd` and 1 for `pscale`.
 Blender is Z-up and Houdini is Y-up. Output objects are rotated 90° around X so
 `@P.y` stays "up" in your VEX. Object Merge converts the other way.
 
+See [ROADMAP.md](ROADMAP.md) for what is done and what is planned.
+
 ## Houdini → Blendini cheat sheet
 
 | Houdini | Blendini |
