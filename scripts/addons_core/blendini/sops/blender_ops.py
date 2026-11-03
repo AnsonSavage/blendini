@@ -587,9 +587,12 @@ def _rbd_cleanup(state):
             bpy.data.objects.remove(ob)
             if mesh is not None and mesh.users == 0:
                 bpy.data.meshes.remove(mesh)
+        constraints = scene.rigidbody_world.constraints if scene.rigidbody_world is not None else None
         bpy.data.scenes.remove(scene)
         if coll is not None and coll.users == 0:
             bpy.data.collections.remove(coll)
+        if constraints is not None and constraints.users == 0:
+            bpy.data.collections.remove(constraints)
     state.clear()
 
 
@@ -619,6 +622,11 @@ class RBDSolverSOP(SOP):
         Parm('bounce', "Bounce", 'float', default=0.1, min=0, max=1),
         Parm('density', "Density", 'float', default=1.0, min=0.001),
         Parm('substeps', "Substeps per Frame", 'int', default=10, min=1, max=100),
+        Parm('glue', "Glue Neighbouring Pieces", 'bool', default=False,
+             description="Connect touching pieces with breakable constraints (Houdini glue network)"),
+        Parm('gluestrength', "Glue Strength", 'float', default=20.0, min=0.0, soft_max=500.0,
+             hide_when={'glue': False}, description="Impulse needed to break a glue bond"),
+        Parm('gluepartners', "Max Partners", 'int', default=6, min=1, max=20, hide_when={'glue': False}),
         Parm('shrink', "Collision Shrink", 'float', default=0.97, min=0.5, max=1.0,
              description="Shrink collision shapes so pieces that touch at the start don't push each other apart"),
         Parm('margin', "Collision Margin", 'float', default=0.001, min=0, soft_max=0.1,
@@ -688,11 +696,40 @@ class RBDSolverSOP(SOP):
             ob.rigid_body.collision_shape = 'MESH' if j > 0 or not p.ground else 'BOX'
             ob.rigid_body.friction = p.friction
             ob.rigid_body.restitution = p.bounce
+        if p.glue and len(objs) > 1:
+            self._glue(scene, objs, np.array(centers), p)
         state['objects'] = objs
         state['centers'] = np.array(centers)
         state['frames'] = {}
         state['last'] = start - 1
         scene.frame_set(start)
+
+    def _glue(self, scene, objs, centers, p):
+        """Breakable FIXED constraints between neighbouring pieces."""
+        n = len(objs)
+        d = np.linalg.norm(centers[:, None, :] - centers[None, :, :], axis=2)
+        np.fill_diagonal(d, np.inf)
+        nearest = d.min(axis=1)
+        radius = 1.6 * float(np.median(nearest[np.isfinite(nearest)]))
+        k = min(max(int(p.gluepartners), 1), n - 1)
+        pairs = set()
+        for i in range(n):
+            for j in np.argsort(d[i])[:k]:
+                if d[i, j] <= radius:
+                    pairs.add((min(i, int(j)), max(i, int(j))))
+        for a, b in sorted(pairs):
+            empty = bpy.data.objects.new("%s_glue_%d_%d" % (scene.name, a, b), None)
+            empty.location = (centers[a] + centers[b]) / 2
+            scene.collection.objects.link(empty)
+            with bpy.context.temp_override(scene=scene, object=empty, active_object=empty, selected_objects=[empty],
+                                           selected_editable_objects=[empty]):
+                bpy.ops.rigidbody.constraint_add(type='FIXED')
+            c = empty.rigid_body_constraint
+            c.object1 = bpy.data.objects[objs[a]]
+            c.object2 = bpy.data.objects[objs[b]]
+            c.use_breaking = True
+            c.breaking_threshold = p.gluestrength
+        return len(pairs)
 
     def cook(self, inputs, p, ctx):
         from ..core.geometry import merge

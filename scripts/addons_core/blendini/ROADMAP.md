@@ -51,7 +51,8 @@ and needs a real Blender session to confirm.
 - [x] VEX function overloading by signature, function-like `#define` macros
 - [ ] VEX `struct`s
 - [ ] NURBS / Bézier primitives, volumes as a native primitive type
-- [ ] Constraint networks for RBD, FLIP-style surface tension / viscosity
+- [x] RBD glue constraints (breakable FIXED constraints between neighbouring pieces)
+- [ ] Full constraint networks (hinges, springs from geometry), FLIP-style surface tension
 - [ ] Viewport handles and tool states (Transform handle, Edit brush)
 - [ ] Multi-line code editor in the parameter pane (Blender UI has no widget for it today)
 
