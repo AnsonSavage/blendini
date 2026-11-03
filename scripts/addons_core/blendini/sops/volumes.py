@@ -361,6 +361,7 @@ class VolumeTrailSOP(SOP):
         Parm('field', "Velocity Field", 'string', default='vel'),
         Parm('steps', "Steps", 'int', default=30, min=1, max=1000),
         Parm('stepsize', "Time Step", 'float', default=0.05, min=1e-4, soft_max=1.0),
+        Parm('stopoutside', "Stop Outside Volume", 'bool', default=True),
     )
 
     def cook(self, inputs, p, ctx):
@@ -373,12 +374,19 @@ class VolumeTrailSOP(SOP):
         if pts.num_points == 0:
             return out
         X = pts.P.copy()
+        lo, hi = vel.bounds()
+        alive = np.ones(len(X), dtype=bool)
         trail = [X.copy()]
         for _ in range(p.steps):
             # Midpoint (RK2) integration.
             k1 = vel.sample(X)
             k2 = vel.sample(X + k1 * p.stepsize * 0.5)
-            X = X + k2 * p.stepsize
+            step = k2 * p.stepsize
+            if p.get('stopoutside', True):
+                step[~alive] = 0.0
+            X = X + step
+            if p.get('stopoutside', True):
+                alive &= np.all((X >= lo) & (X <= hi), axis=1)
             trail.append(X.copy())
         T = np.stack(trail, axis=1)          # (n, steps+1, 3)
         n, m = T.shape[:2]
