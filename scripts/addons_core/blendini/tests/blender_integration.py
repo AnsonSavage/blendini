@@ -297,6 +297,16 @@ def main():
         errors = [(t.name, n.name) for t in cook.all_trees() for n in t.nodes if cook.node_info(n).get('error')]
         assert not errors, errors
 
+    def socket_upgrade_on_load():
+        from blendini.bl.tree import upgrade_sockets
+        tree = bpy.data.node_groups.new("upgrade_test", "BlendiniSOPTree")
+        try:
+            n = tree.nodes.new(NODE_PREFIX + 'groupcreate')
+            n.inputs.remove(n.inputs[1])      # as saved by an older version
+            assert upgrade_sockets() >= 1 and len(n.inputs) == 2
+        finally:
+            bpy.data.node_groups.remove(tree)
+
     def unregister():
         blendini.unregister()
 
@@ -313,6 +323,7 @@ def main():
     check("instance Blender objects by name", instance_objects)
     check("Houdini expression variables", houdini_expression_variables)
     check("undo / redo with simulations", undo_redo_with_simulations)
+    check("socket upgrade for older files", socket_upgrade_on_load)
     check("unregister", unregister)
     print("\n%d failure(s)" % len(failures))
     return 1 if failures else 0

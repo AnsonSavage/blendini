@@ -1640,6 +1640,11 @@ def on_frame_change(scene, depsgraph=None):
 def on_load_post(*_args):
     cook.clear_cache()
     try:
+        from .tree import upgrade_sockets
+        upgrade_sockets()
+    except Exception as ex:  # never block loading a file
+        print("Blendini: socket upgrade failed:", ex)
+    try:
         from ..sops.blender_ops import remove_stale_rbd_scenes
         remove_stale_rbd_scenes()
     except Exception as ex:

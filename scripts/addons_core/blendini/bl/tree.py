@@ -255,6 +255,26 @@ def node_vop_tree(node):
     return vt
 
 
+def upgrade_sockets():
+    """Files saved by older Blendini versions: add input sockets that SOPs gained since."""
+    added = 0
+    for tree in bpy.data.node_groups:
+        if tree.bl_idname != TREE_ID:
+            continue
+        for node in tree.nodes:
+            if not isinstance(node, BlendiniNodeBase):
+                continue
+            sop = REGISTRY.get(node.sop_id)
+            if sop is None:
+                continue
+            labels = sop.input_labels
+            for i in range(len(node.inputs), sop.inputs):
+                label = labels[i] if i < len(labels) else "Input %d" % (i + 1)
+                node.inputs.new(SOCKET_ID, label)
+                added += 1
+    return added
+
+
 def make_subnet_tree(owner, name):
     inner = bpy.data.node_groups.new("%s/%s" % (owner.name, name), TREE_ID)
     inner.owner_tree = owner
