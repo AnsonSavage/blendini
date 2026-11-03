@@ -671,6 +671,12 @@ class Interpreter:
             if any(len(a.d) == 0 for a in args):
                 raise
             raise VexError("Line %d: wrong number of arguments to %s()" % (node.line, name)) from None
+        except VexError:
+            raise
+        except (TypeError, ValueError, AttributeError, KeyError) as ex:
+            # Wrong argument types: say so in VEX terms instead of numpy's.
+            raise VexError("Line %d: %s() doesn't accept (%s) [%s]" % (
+                node.line, name, ", ".join(a.t for a in args), str(ex).split('\n')[0][:80])) from None
         if name in _builtins.INPLACE:
             # Functions like append() / rotate() modify their first argument.
             new_val, result = result
