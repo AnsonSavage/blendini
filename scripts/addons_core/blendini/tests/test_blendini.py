@@ -889,6 +889,23 @@ class TestEverydaySops(unittest.TestCase):
             return float((d.data.sum(axis=(1, 2)) * xs).sum() / d.data.sum())
         self.assertGreater(centroid_x(moving), centroid_x(src) + 0.2)
 
+    def test_vellum_pressure(self):
+        from blendini.sops import REGISTRY, default_parms, CookContext
+        from blendini.sops.vellum import mesh_volume
+        s = cook_sop('sphere', type='polymesh', freq=2, t=(0, 1.5, 0))
+        tris, _ = s.triangulate_flat()
+        v0 = abs(mesh_volume(s.P, tris))
+        ratios = []
+        for pr in (0.0, 1.5):
+            p = default_parms('vellum')
+            p.update(pressure=pr, bendstiffness=0.01, stiffness=0.3)
+            st = {}
+            for f in (1, 24):
+                out = REGISTRY['vellum'].cook([s], p, CookContext(frame=f, time=(f - 1) / 24, state=st))
+            ratios.append(abs(mesh_volume(out.P, tris)) / v0)
+        self.assertLess(ratios[0], 0.5)
+        self.assertAlmostEqual(ratios[1], 1.5, delta=0.1)
+
     def test_skin(self):
         rows = Geometry.from_polys([[x, y, 0] for y in range(3) for x in range(4)],
                                    [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], closed=False)

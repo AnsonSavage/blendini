@@ -70,6 +70,29 @@ class _Collider:
         return out
 
 
+def mesh_volume(X, tris):
+    a, b, c = X[tris[:, 0]], X[tris[:, 1]], X[tris[:, 2]]
+    return float(np.einsum('ij,ij->i', a, np.cross(b, c)).sum() / 6.0)
+
+
+def _volume_constraint(X, tris, target, free):
+    """PBD volume (balloon) constraint: move points along the volume gradient toward the target."""
+    n = len(X)
+    a, b, c = X[tris[:, 0]], X[tris[:, 1]], X[tris[:, 2]]
+    vol = float(np.einsum('ij,ij->i', a, np.cross(b, c)).sum() / 6.0)
+    grad = np.zeros((n, 3))
+    for k, g in ((0, np.cross(b, c)), (1, np.cross(c, a)), (2, np.cross(a, b))):
+        for axis in range(3):
+            grad[:, axis] += np.bincount(tris[:, k], weights=g[:, axis], minlength=n)
+    grad /= 6.0
+    grad[~free] = 0.0
+    denom = float(np.einsum('ij,ij->', grad, grad))
+    if denom < 1e-18:
+        return X
+    lam = (target - vol) / denom
+    return X + grad * lam
+
+
 def pbd_step(state, dt, p, collider):
     P, V = state['P'], state['V']
     pinned = state['pinned']
@@ -101,6 +124,8 @@ def pbd_step(state, dt, p, collider):
                 acc[:, axis] -= np.bincount(b, weights=corr[:, axis] * wb, minlength=n)
             cnt += np.bincount(a, minlength=n) + np.bincount(b, minlength=n)
             X += acc / np.maximum(cnt, 1)[:, None] * 1.5
+        if p.pressure > 0 and state.get('tris') is not None and len(state['tris']):
+            X = _volume_constraint(X, state['tris'], state['rest_volume'] * p.pressure, free)
         if p.ground:
             below = X[:, 1] < p.groundy + p.thickness
             X[below, 1] = p.groundy + p.thickness
@@ -138,6 +163,8 @@ class VellumSOP(SOP):
         Parm('groundy', "Ground Height", 'float', default=0.0),
         Parm('friction', "Ground Friction", 'float', default=0.2, min=0, max=1),
         Parm('thickness', "Thickness", 'float', default=0.02, min=0, soft_max=0.5),
+        Parm('pressure', "Pressure (Balloon)", 'float', default=0.0, min=0.0, soft_max=3.0,
+             description="Closed meshes keep pressure x their rest volume (0 = off, 1 = keep volume, >1 inflate)"),
     )
 
     def cook(self, inputs, p, ctx):
@@ -160,6 +187,11 @@ class VellumSOP(SOP):
                 'edges': E, 'rest': np.linalg.norm(geo.P[E[:, 1]] - geo.P[E[:, 0]], axis=1) if len(E) else np.zeros(0),
                 'bend': B, 'bend_rest': np.linalg.norm(geo.P[B[:, 1]] - geo.P[B[:, 0]], axis=1) if len(B) else np.zeros(0),
             }
+            tris, _ = geo.triangulate_flat()
+            state['sim']['tris'] = tris
+            state['sim']['rest_volume'] = abs(mesh_volume(geo.P, tris)) if len(tris) else 0.0
+            if len(tris) and mesh_volume(geo.P, tris) < 0:
+                state['sim']['tris'] = tris[:, ::-1].copy()
             state['frames'] = {start: geo.P.copy()}
             state['last'] = start
         frames = state['frames']
