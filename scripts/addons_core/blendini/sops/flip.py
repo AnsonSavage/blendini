@@ -11,7 +11,7 @@ pass that keeps the particle spacing (volume) stable.
 
 import numpy as np
 
-from .base import SOP, Parm, register_sop
+from .base import SOP, Parm, register_sop, CookError
 from ..core.geometry import Geometry, POINT
 from .fluid import neighbour_pairs
 from .modify import _in
@@ -162,6 +162,9 @@ class FLIPSolverSOP(SOP):
             hi = np.asarray(p.boxmax, dtype=np.float64)
             h = p.particlesep * p.gridscale
             res = np.maximum(np.ceil((hi - lo) / h).astype(np.int64), 2)
+            if np.prod(res) > 8_000_000:
+                raise CookError("FLIP grid too large (%s cells): increase the particle separation or grid scale, "
+                                "or shrink the container" % 'x'.join(str(int(r)) for r in res))
             v0 = geo.attribs[POINT].get('v')
             st = {'x': geo.P.copy(), 'h': h, 'origin': lo, 'res': res,
                   'v': np.array(v0, dtype=np.float64) if v0 is not None and v0.shape == geo.P.shape
