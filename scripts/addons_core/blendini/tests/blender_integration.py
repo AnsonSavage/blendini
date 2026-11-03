@@ -114,6 +114,19 @@ def main():
         leaked = [ob.name for ob in bpy.data.objects if any(ob.name.startswith(n + '_') for n in removed)]
         assert not leaked, leaked
 
+    def handle_bindings():
+        from blendini.bl import handles
+        tree = bpy.data.node_groups.new("handles_test", "BlendiniSOPTree")
+        try:
+            for sid in handles.HANDLES:
+                node = tree.nodes.new(NODE_PREFIX + sid)
+                for b in handles.bindings(node):
+                    v = b['get']()
+                    b['set'](v + 0.25)
+                    assert abs(b['get']() - (v + 0.25)) < 1e-4, (sid, b['kind'])
+        finally:
+            bpy.data.node_groups.remove(tree)
+
     def unregister():
         blendini.unregister()
 
@@ -122,6 +135,7 @@ def main():
     check("self test (every SOP)", self_test)
     check("operators with a node editor context", operators)
     check("rigid body scene lifecycle", rbd_scene_lifecycle)
+    check("viewport handle bindings", handle_bindings)
     check("unregister", unregister)
     print("\n%d failure(s)" % len(failures))
     return 1 if failures else 0

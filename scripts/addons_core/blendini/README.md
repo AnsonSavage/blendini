@@ -63,9 +63,12 @@ Or step by step:
      spreadsheet.
    - **N** sidebar → **Spreadsheet** tab: Houdini's Geometry Spreadsheet for the *active*
      node (points / vertices / primitives / detail, attributes and groups).
-   - **Viewport handle**: select a network's output object, and when its active node is a
-     Transform SOP, translate arrows and rotate dials appear in the 3D view. Drag them to
-     edit Translate and Rotate, as with Houdini's handles.
+   - **Viewport handles**: select a network's output object, and the active node's handle
+     appears in the 3D view, as in Houdini. Transform has translate arrows, small pivot arrows,
+     rotate dials and scale boxes. Box, Sphere, Tube, Platonic, Torus, Circle and Grid have
+     center arrows and size/radius boxes. Mirror, Revolve, Line and Bend have origin arrows
+     (Line and Bend also get a length box). Group Create and Delete in Bounding Box mode get
+     an editable box.
    - 3D viewport sidebar → *Blendini* tab: a Houdini-style **Create shelf** (Box, Sphere,
      Tube, Torus, Grid, ... each makes a new geometry object with that SOP inside).
    - Viewport display of point numbers, primitive numbers and normals: the *Blendini* tab of

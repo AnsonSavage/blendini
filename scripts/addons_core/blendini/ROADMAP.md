@@ -69,7 +69,9 @@ and needs a real Blender session to confirm.
 - [x] RBD glue constraints (breakable FIXED constraints between neighbouring pieces)
 - [ ] Full constraint networks (hinges, springs from geometry), FLIP-style surface tension
 - [x] Viewport handle for the Transform SOP (translate arrows + rotate dials)
-- [ ] More handles (scale, other SOPs) and tool states (Edit brush)
+- [x] More handles: Transform scale and pivot, primitives (center / size / radius), origins,
+      lengths, bounding box groups (table driven, `bl/handles.py`)
+- [ ] Tool states (Edit brush / soft selection)
 - [ ] Multi-line code editor in the parameter pane (Blender UI has no widget for it today)
 
 ## Deliberately not planned
