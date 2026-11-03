@@ -25,10 +25,10 @@ and needs a real Blender session to confirm.
 - [x] Attribute VOP (visual VEX network that generates code)
 - [x] Driver expressions on parameters evaluated through VEX (`#frame * 0.1`), keyframes
 
-### SOPs (138)
+### SOPs (139)
 - [x] Primitives, manipulation, polygon, attribute, group, copy/instancing, terrain, utility,
       Blender-backed (modifiers, bmesh, BVH, Bullet, OpenVDB) — see README for the full list
-- [x] Simulations: Solver (VEX), Vellum-style cloth (PBD), RBD (Bullet), PBF fluid + meshing
+- [x] Simulations: Solver (VEX), Vellum-style cloth (PBD), RBD (Bullet), PBF fluid + meshing, Pyro smoke
 - [x] For-Each (pieces, feedback, count), Subnetworks, Time Shift, Edit (hand edits), Bake
 - [x] Everyday additions: Enumerate, Group by Range, Switch-If, Revolve, Skin, Path Deform,
       Distance from Geometry, Lattice, UV Transform, UV Layout, Attribute Adjust Float / Vector,
@@ -74,7 +74,8 @@ and needs a real Blender session to confirm.
 - [x] RBD glue constraints (breakable FIXED constraints between neighbouring pieces)
 - [x] Constraint networks from geometry (Connect Adjacent Pieces → RBD third input: glue, fixed,
       point, hinge, slider, spring; per-primitive strength / stiffness / axis; world pins)
-- [ ] FLIP-style fluid (surface tension, narrow band)
+- [x] Pyro-style smoke solver (stable fluids on native volumes: buoyancy, vorticity, turbulence)
+- [ ] FLIP-style fluid (surface tension, narrow band), fire / combustion
 - [x] Viewport handle for the Transform SOP (translate arrows + rotate dials)
 - [x] More handles: Transform scale and pivot, primitives (center / size / radius), origins,
       lengths, bounding box groups (table driven, `bl/handles.py`)

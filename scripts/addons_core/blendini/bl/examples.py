@@ -356,6 +356,13 @@ def build_examples():
     _finish(t, w)
     trees.append(t)
 
+    t = _new_tree("pyro_smoke", (118, 0, 0))
+    src = _node(t, 'sphere', (0, 400), rad=(0.3, 0.3, 0.3), t=(0.0, 0.35, 0.0))
+    pyro = _node(t, 'pyrosolver', (0, 200))
+    _chain(t, [src, pyro])
+    _finish(t, pyro)
+    trees.append(t)
+
     t = _new_tree("terrain", (115, 0, 0))
     hf = _node(t, 'heightfield', (0, 600), size=(12.0, 12.0), gridspacing=0.06)
     nz = _node(t, 'hfnoise', (0, 400), amp=2.2, elementsize=6.0, octaves=7, roughness=0.55)

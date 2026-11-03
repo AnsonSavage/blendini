@@ -672,6 +672,23 @@ class TestEverydaySops(unittest.TestCase):
         self.assertGreater(r.volumes[0].sample([[0, 0, 0]])[0], 0.5)
         self.assertEqual(merge([w, sdf]).volumes[-1].name, 'surface')
 
+    def test_pyro_smoke_rises(self):
+        from blendini.sops import REGISTRY, default_parms, CookContext
+        src = cook_sop('sphere', rad=(0.3, 0.3, 0.3), t=(0, 0.4, 0))
+        p = default_parms('pyrosolver')
+        p.update(voxelsize=0.12, pressureiters=10)
+        st = {}
+        heights = []
+        for f in (1, 8, 16):
+            out = REGISTRY['pyrosolver'].cook([src], p, CookContext(frame=f, time=(f - 1) / 24, state=st))
+            if out.volumes:
+                d = out.volumes[0]
+                ys = d.origin[1] + (np.arange(d.res[1]) + 0.5) * d.voxelsize
+                heights.append(float((d.data.sum(axis=(0, 2)) * ys).sum() / d.data.sum()))
+                self.assertEqual([v.name for v in out.volumes], ['density', 'temperature', 'vel'])
+        self.assertEqual(len(heights), 2)
+        self.assertGreater(heights[1], heights[0] + 0.05)
+
     def test_skin(self):
         rows = Geometry.from_polys([[x, y, 0] for y in range(3) for x in range(4)],
                                    [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], closed=False)
