@@ -951,3 +951,77 @@ def _primarclen(I, args, mask, hint):
 
 
 _ = (SCALARS, _quat_from_matrix3, _point_prims_table)
+
+
+# ----------------------------------------------------------------------------
+# Volumes (native voxel grids, see core/volume.py)
+
+
+def _volume(I, geo_arg, name_arg):
+    from ..core.volume import volume_by_name
+    geo = _geo(I, geo_arg)
+    key = int(name_arg.d.flat[0]) if name_arg.t in SCALARS else _uniform_str(name_arg)
+    return volume_by_name(geo, key)
+
+
+@builtin('volumesample', 'volumesamplev')
+def _volumesample(I, args, mask, hint):
+    vol = _volume(I, args[0], args[1])
+    pos = full(convert(args[2], 'vector'), I.n)
+    if vol is None:
+        return const('vector' if hint == 'vector' else 'float', 0.0) if hint != 'vector' else V('vector', np.zeros((1, 3)))
+    val = vol.sample(pos)
+    return V('vector', val) if vol.is_vector else V('float', val)
+
+
+@builtin('volumegradient')
+def _volumegradient(I, args, mask, hint):
+    vol = _volume(I, args[0], args[1])
+    if vol is None or vol.is_vector:
+        return V('vector', np.zeros((1, 3)))
+    return V('vector', vol.gradient(full(convert(args[2], 'vector'), I.n)))
+
+
+@builtin('volumeres')
+def _volumeres(I, args, mask, hint):
+    vol = _volume(I, args[0], args[1])
+    return V('vector', (vol.res.astype(np.float64) if vol is not None else np.zeros(3))[None])
+
+
+@builtin('volumevoxeldiameter')
+def _volumevoxeldiameter(I, args, mask, hint):
+    vol = _volume(I, args[0], args[1])
+    return const('float', vol.voxelsize * np.sqrt(3) if vol is not None else 0.0)
+
+
+@builtin('volumepostoindex')
+def _volumepostoindex(I, args, mask, hint):
+    vol = _volume(I, args[0], args[1])
+    pos = full(convert(args[2], 'vector'), I.n)
+    if vol is None:
+        return V('vector', np.zeros((1, 3)))
+    return V('vector', vol.pos_to_index(pos).astype(np.float64))
+
+
+@builtin('volumeindextopos')
+def _volumeindextopos(I, args, mask, hint):
+    vol = _volume(I, args[0], args[1])
+    idx = full(convert(args[2], 'vector'), I.n)
+    if vol is None:
+        return V('vector', np.zeros((1, 3)))
+    return V('vector', vol.index_to_pos(idx))
+
+
+@builtin('volumeindex', 'volumeindexv')
+def _volumeindex(I, args, mask, hint):
+    vol = _volume(I, args[0], args[1])
+    idx = full(convert(args[2], 'vector'), I.n).astype(np.int64)
+    if vol is None:
+        return const('float', 0.0)
+    r = vol.res
+    ok = np.all((idx >= 0) & (idx < r), axis=1)
+    ic = np.clip(idx, 0, r - 1)
+    val = vol.data[ic[:, 0], ic[:, 1], ic[:, 2]]
+    if vol.is_vector:
+        return V('vector', np.where(ok[:, None], val, 0.0))
+    return V('float', np.where(ok, val, 0.0))

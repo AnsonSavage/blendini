@@ -42,9 +42,9 @@ Or step by step:
 1. Enable **Blendini** in *Preferences → Add-ons*.
 2. In the 3D viewport choose *Add → Blendini Geometry*. This creates `geo1` (an object
    plus its SOP network, like `/obj/geo1`) and opens the network in a node editor.
-3. Or use *Add → Blendini Examples* to build fifteen example networks: ripple, scatter and
+3. Or use *Add → Blendini Examples* to build sixteen example networks: ripple, scatter and
    copy, plexus, city, particles, for-each, L-system tree, Vellum cloth, fracture, RBD
-   fracture, RBD hanging chain (constraint network pinned to the world), eroded terrain, fluid dam break, VOP displacement and spiral. Press play for the simulations.
+   fracture, RBD hanging chain (constraint network pinned to the world), VEX volume cloud (renders as smoke), eroded terrain, fluid dam break, VOP displacement and spiral. Press play for the simulations.
 4. In the node editor:
    - **Tab**: Houdini-style TAB menu (start typing to search). With a node selected, the new
      node is wired to its output and takes over the display flag, like Houdini.
@@ -107,7 +107,7 @@ See [ROADMAP.md](ROADMAP.md) for what is done and what is planned.
 | Subnets / digital assets | Subnetwork node, **I** / **U** to dive in and out, promoted parameters (`ch("name")` inside) |
 | Packed primitives | *Pack and Instance* on Copy to Points, Pack, Assemble; rendered as Blender instances |
 | SOP Solver, Vellum, RBD (Bullet), FLIP | Solver (VEX), Vellum Cloth (PBD), RBD Bullet Solver, Fluid Solver (PBF) + Particle Fluid Surface |
-| VDB | OpenVDB through Geometry Nodes (Particle Fluid Surface, Remesh) |
+| VDB / volumes, Volume Wrangle | Native voxel volumes (Volume, Volume from Polygons, **Volume Wrangle** with `@density`, Convert Volume). Fog volumes render as smoke through a Blender Volume object (OpenVDB). OpenVDB through Geometry Nodes for Particle Fluid Surface and VDB Reshape |
 | Mantra / Karma | Cycles / EEVEE; `Cd` is rendered by the automatic *Blendini Cd* material |
 | Y-up | Y-up inside networks; output objects are rotated into Blender's Z-up |
 
@@ -134,6 +134,7 @@ See [ROADMAP.md](ROADMAP.md) for what is done and what is planned.
 | Simulation| **Solver (VEX)** (SOP Solver), **Vellum Cloth (PBD)** (stretch/bend constraints, pins, ground, colliders), **RBD Bullet Solver\*** (Blender's rigid bodies in a private scene, optional breakable glue between neighbouring pieces, **constraint networks** on the third input: glue / fixed / point / hinge / slider / spring polylines, pins to the world), **Connect Adjacent Pieces** (builds constraint networks), **Fluid Solver (PBF)** (experimental particle fluid in a box) |
 | Polygon   | **Voronoi Fracture\***, Particle Fluid Surface\* (OpenVDB meshing), **VDB Reshape / Smooth SDF\*** (dilate, erode, smooth, fillet), VDB Combine\* (SDF boolean), Add, Clean, Ends, Fuse, Facet, PolyFill\*, PolyBridge\*, Dissolve\*, Shrinkwrap\* (convex hull), Triangulate 2D\* (Delaunay), Divide, Reverse, PolyExtrude, PolyWire, Sweep, Revolve, Skin, Resample, Carve, Convert Line, PolyPath, Subdivide\*, PolyBevel\*, Boolean\*, Remesh\*, PolyReduce\*, Clip\* |
 | Attribute | Attribute Create / Delete / Rename / Copy / Promote / Randomize / Noise / Transfer / Blur / Interpolate / String Edit, Name, Rest Position, Attribute from Map\*, Color, Normal, Connectivity, Enumerate, Distance from Geometry, Attribute Adjust Float / Vector (constant, random or noise; set, add, multiply, min, max), Calculate Occlusion (ray traced AO), Measure, UV Texture, UV Unwrap\* (Smart UV Project / Unwrap / Cube), UV Layout\* (pack islands), UV Transform, PolyFrame, Trail (velocity, also feeds Blender motion blur) |
+| Volume    | Volume (fog / SDF / vector grid), **Volume from Polygons** (VDB from Polygons: SDF or fog), **Volume Wrangle** (VEX per voxel: `@density`, `v@vel`, `@P`, `@ix`; new `@names` create volumes), Volume Blur, Volume Rasterize Points (density and v), Convert Volume (surface nets iso surface). Fog volumes are shown and rendered as smoke (a Blender Volume object, OpenVDB file), SDFs as their surface |
 | Terrain   | HeightField, HeightField Noise (fBm / ridged), HeightField Erode (thermal + flow-based hydraulic) |
 | Group     | Group Create (pattern / bounding box / normal / random / `@expression`), Group by Range, Group from Attribute Boundary, Group Combine, Group Promote, Group Expand, Blast, Delete, Split (two outputs) |
 | Copy      | Copy to Points (orient, N/up, pscale, scale, piece variants, **Pack and Instance**), Pack, Unpack, Assemble, Copy and Transform, Scatter, Points from Volume\* |
@@ -200,6 +201,8 @@ Builtins (partial list):
   npointsgroup nprimitivesgroup primvertices pointvertices vertexindex vertexprimindex
   nuniqueval uniqueval uniquevals findattribvalcount nametopoint nametoprim attribtype attribsize
   intersect primarclen pcopen pcfilter pciterate pcimport`.
+- Volumes: `volumesample volumesamplev volumegradient volumeres volumeindex volumepostoindex
+  volumeindextopos volumevoxeldiameter`.
 - Half-edges: `primhedge pointhedge pointedge hedge_srcpoint hedge_dstpoint hedge_next hedge_prev
   hedge_prim hedge_isvalid hedge_isprimary hedge_equivcount hedge_nextequiv hedge_presrcpoint hedge_postdstpoint`.
 - Strings: `sprintf itoa atoi split join replace strip lstrip rstrip re_match re_find re_findall
@@ -280,6 +283,6 @@ there is no Python SOP.
 
 ## Not done yet (ideas)
 
-NURBS and Bézier primitives, volumes/VDB, a full DOP context (constraints, FLIP meshing, Pyro), more VOP types, more viewport
+NURBS and Bézier primitives, sparse (VDB-style) volumes, a full DOP context (constraints, FLIP meshing, Pyro), more VOP types, more viewport
 handles/states, and a multi-line code editor inside the parameter
 pane. Today the code is edited in Blender's Text Editor, which recooks live.

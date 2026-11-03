@@ -644,6 +644,34 @@ class TestEverydaySops(unittest.TestCase):
         self.assertGreater(occ[2:4, 2:4].mean(), 0.5)
         self.assertEqual(occ[0].sum() + occ[-1].sum(), 0)
 
+    def test_volumes(self):
+        from blendini.core.volume import surface_nets
+        v = cook_sop('volume', size=(2.0, 2.0, 2.0), voxelsize=0.1, usebounds=False)
+        w = cook_sop('volumewrangle', [v], snippet='@density = 0.8 - length(@P); v@vel = set(0, 1, 0);')
+        names = [x.name for x in w.volumes]
+        self.assertEqual(names, ['density', 'vel'])
+        self.assertTrue(w.volumes[1].is_vector)
+        pts, quads = surface_nets(w.volumes[0], 0.0, inside_below=False)
+        r = np.linalg.norm(pts, axis=1)
+        self.assertLess(abs(r.mean() - 0.8), 0.02)
+        sdf = cook_sop('volumefrompolygons', [cook_sop('box')], voxelsize=0.1)
+        out, _ = run_wrangle('f@d = volumesample(1, "surface", @P); v@g = volumegradient(1, 0, @P + {0.2, 0, 0});',
+                             [Geometry.from_polys([[0, 0, 0], [0.7, 0, 0]]), sdf], run_over='point')
+        d = out.attribs['point']['d']
+        self.assertLess(d[0], -0.4)                     # box center is inside
+        self.assertAlmostEqual(float(d[1]), 0.2, delta=0.05)
+        self.assertGreater(out.attribs['point']['g'][0][0], 0.5)
+        conv = cook_sop('convertvolume', [sdf])
+        self.assertTrue(np.allclose(np.abs(conv.P).max(axis=1), 0.5, atol=0.06))
+        moved = cook_sop('xform', [sdf], t=(2.0, 0, 0))
+        np.testing.assert_allclose(moved.volumes[0].origin, sdf.volumes[0].origin + [2, 0, 0])
+        blurred = cook_sop('volumeblur', [w], group='density')
+        self.assertLess(blurred.volumes[0].data.max(), w.volumes[0].data.max())
+        pts = Geometry.from_polys([[0, 0, 0], [1, 0, 0]])
+        r = cook_sop('volumerasterizepoints', [pts], radius=0.3)
+        self.assertGreater(r.volumes[0].sample([[0, 0, 0]])[0], 0.5)
+        self.assertEqual(merge([w, sdf]).volumes[-1].name, 'surface')
+
     def test_skin(self):
         rows = Geometry.from_polys([[x, y, 0] for y in range(3) for x in range(4)],
                                    [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], closed=False)

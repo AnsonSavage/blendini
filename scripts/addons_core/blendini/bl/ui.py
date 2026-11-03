@@ -60,7 +60,8 @@ def draw_node_header(node, context, layout):
         row.label(text="Bypassed")
     elif 'geo' in info:
         g = info['geo']
-        row.label(text="%d pts  %d prims" % (g.num_points, g.num_prims))
+        row.label(text="%d pts  %d prims" % (g.num_points, g.num_prims)
+                  + ("  %d volumes" % len(g.volumes) if getattr(g, 'volumes', None) else ""))
     if info.get('error'):
         col = layout.column(align=True)
         for line in _wrap(info['error'], 40)[:4]:
@@ -111,7 +112,7 @@ def draw_parms(node, context, layout, compact=False):
             row.prop(node, pname, text=parm.label)
         else:
             col.prop(node, pname, text=parm.label)
-    if sop.category == 'VEX':
+    if sop.category == 'VEX' or any(prm.name == 'snippet' for prm in sop.parms):
         _draw_spare(node, layout, compact)
     if sop.id == 'edit':
         idx, d = node.edit_deltas()
@@ -1032,6 +1033,14 @@ class BLENDINI_PT_info(bpy.types.Panel):
         lo, hi = geo.bbox()
         col.label(text="Bounds  min (%.2f, %.2f, %.2f)" % tuple(lo))
         col.label(text="             max (%.2f, %.2f, %.2f)" % tuple(hi))
+        if getattr(geo, 'volumes', None):
+            box = layout.box()
+            box.label(text="Volumes", icon='VOLUME_DATA')
+            for v in geo.volumes:
+                r = v.res
+                box.label(text="  %s  %s  %dx%dx%d  voxel %.3g  [%.3g, %.3g]" % (
+                    v.name, 'vector' if v.is_vector else v.kind, r[0], r[1], r[2], v.voxelsize,
+                    float(v.data.min()) if v.data.size else 0.0, float(v.data.max()) if v.data.size else 0.0))
         for cls, label in ((POINT, "Point"), (VERTEX, "Vertex"), (PRIM, "Primitive"), (DETAIL, "Detail")):
             attrs = geo.attribs[cls]
             if not attrs:

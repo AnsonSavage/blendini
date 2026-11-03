@@ -541,7 +541,20 @@ def cook_tree(tree, frame=None):
         if _cache.get(tkey) != (sig, obj.data.name) or sig is None:
             from .mesh_io import geo_to_mesh
             mats = list(obj.data.materials)
-            geo_to_mesh(geo, obj.data)
+            shown = geo
+            from .volume_io import sync_volumes
+            try:
+                smoke = sync_volumes(tree, obj, geo)
+            except (RuntimeError, ReferenceError, OSError) as ex:
+                print("Blendini: volume display failed:", ex)
+                smoke = False
+            if getattr(geo, 'volumes', None):
+                # SDFs are drawn as their surface, fog as an iso surface unless a Volume object
+                # shows it as smoke; bounding boxes for all.
+                from ..core.volume import volume_display
+                from ..core.geometry import merge
+                shown = merge([geo, volume_display(geo, fog_surfaces=not smoke)])
+            geo_to_mesh(shown, obj.data)
             if mats and not obj.data.materials:
                 for m in mats:
                     obj.data.materials.append(m)

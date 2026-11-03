@@ -154,6 +154,14 @@ def _build_displace_vop(vt):
     g.location = (-400, 0)
 
 
+CLOUD = """\
+// Volume Wrangle: runs once per voxel. @density is the volume named "density".
+float d = 1.0 - length(@P * {1, 1.6, 1});
+float n = noise(@P * 2.5 + {0, 0.2, 0} * @Time) + 0.5 * noise(@P * 6);
+@density = clamp(d * 3 + (n - 0.9) * 2.5, 0, 1) * 4;
+"""
+
+
 PIN_TO_WORLD = """\
 // Pin the first piece to the world: a constraint from a point named "world" to piece 0.
 vector p0 = point(0, "P", 0) - {0.5, 0, 0};
@@ -339,6 +347,13 @@ def build_examples():
     t.links.new(net.outputs[0], pin.inputs[0])
     t.links.new(pin.outputs[0], rbd.inputs[2])
     _finish(t, rbd)
+    trees.append(t)
+
+    t = _new_tree("volume_cloud", (112, 0, 0))
+    vol = _node(t, 'volume', (0, 400), voxelsize=0.05, size=(2.6, 2.6, 2.6), usebounds=False)
+    w = _node(t, 'volumewrangle', (0, 200), snippet=CLOUD)
+    _chain(t, [vol, w])
+    _finish(t, w)
     trees.append(t)
 
     t = _new_tree("terrain", (115, 0, 0))

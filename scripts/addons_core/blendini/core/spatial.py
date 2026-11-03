@@ -140,6 +140,30 @@ def closest_numpy(P, tris, tri_prim, points):
     A, B, C = P[tris[:, 0]], P[tris[:, 1]], P[tris[:, 2]]
     fn = np.cross(B - A, C - A)
     fn /= np.maximum(np.linalg.norm(fn, axis=1, keepdims=True), 1e-30)
+    if m > 48:
+        # Candidate triangles: the nearest by bounding sphere distance, then exact tests.
+        cen = (A + B + C) / 3
+        rad = np.maximum(np.maximum(np.linalg.norm(A - cen, axis=1), np.linalg.norm(B - cen, axis=1)),
+                         np.linalg.norm(C - cen, axis=1))
+        k = 24
+        step = max(1, 2_000_000 // m)
+        for s in range(0, n, step):
+            q = points[s:s + step]
+            lower = np.maximum(np.linalg.norm(q[:, None, :] - cen[None], axis=2) - rad[None], 0.0)
+            cand = np.argpartition(lower, k, axis=1)[:, :k]
+            kq = len(q)
+            qq = np.repeat(q, k, axis=0)
+            ci = cand.ravel()
+            cp = closest_point_triangles(qq, A[ci], B[ci], C[ci])
+            d = np.linalg.norm(cp - qq, axis=1).reshape(kq, k)
+            j = np.argmin(d, axis=1)
+            rows = np.arange(kq)
+            best = cand[rows, j]
+            loc[s:s + step] = cp.reshape(kq, k, 3)[rows, j]
+            dist[s:s + step] = d[rows, j]
+            nrm[s:s + step] = fn[best]
+            prim[s:s + step] = tri_prim[best]
+        return loc, nrm, prim, dist
     chunk = max(1, 1_000_000 // max(m, 1))
     for s in range(0, n, chunk):
         q = points[s:s + chunk]

@@ -52,7 +52,7 @@ def _default_shape(name):
 
 
 class Geometry:
-    __slots__ = ('attribs', 'prim_start', 'vtx_point', 'prim_closed', 'groups', 'instances')
+    __slots__ = ('attribs', 'prim_start', 'vtx_point', 'prim_closed', 'groups', 'instances', 'volumes')
 
     def __init__(self):
         self.attribs = {POINT: {'P': np.zeros((0, 3))}, PRIM: {}, VERTEX: {}, DETAIL: {}}
@@ -65,6 +65,8 @@ class Geometry:
         # Packed geometry: points with an '__inst' attribute >= 0 instance instances[__inst]
         # with the '__inst_rot' (quaternion xyzw) and '__inst_scale' point attributes.
         self.instances = []
+        # Volume primitives (core.volume.Volume): dense voxel grids.
+        self.volumes = []
 
     # ------------------------------------------------------------------
     # Construction helpers
@@ -85,6 +87,7 @@ class Geometry:
         geo.prim_closed = self.prim_closed.copy()
         geo.groups = {c: {k: v.copy() for k, v in d.items()} for c, d in self.groups.items()}
         geo.instances = list(self.instances)
+        geo.volumes = list(self.volumes)
         return geo
 
     # ------------------------------------------------------------------
@@ -244,6 +247,9 @@ class Geometry:
         if '__inst_rot' in self.attribs[POINT]:
             from .instances import transform_instances
             transform_instances(self, m[:3, :3])
+        if self.volumes:
+            from .volume import transform_volumes
+            self.volumes = transform_volumes(self.volumes, m)
         if vectors:
             rot = m[:3, :3]
             try:
@@ -512,6 +518,7 @@ def merge(geos):
     out.prim_start = np.concatenate(starts).astype(np.int64)
     out.prim_closed = np.concatenate([g.prim_closed for g in geos])
     out.instances = [inst for g in geos for inst in g.instances]
+    out.volumes = [v for g in geos for v in g.volumes]
     for cls in (POINT, PRIM):
         names = set()
         for g in geos:
