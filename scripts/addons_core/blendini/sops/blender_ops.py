@@ -1144,3 +1144,42 @@ class DissolveSOP(SOP):
             bmesh.ops.dissolve_limit(bm, angle_limit=math.radians(p.angle), use_dissolve_boundaries=p.boundaries,
                                      verts=bm.verts[:], edges=bm.edges[:])
         return _with_bmesh(geo, fn)
+
+
+@register_sop
+class PolyBridgeSOP(SOP):
+    id = 'polybridge'
+    label = "PolyBridge"
+    category = 'Polygon'
+    inputs = 1
+    icon = 'MOD_LATTICE'
+    description = "Bridge open edge loops (e.g. two circles or two holes) with faces"
+    parms = (
+        Parm('divisions', "Divisions", 'int', default=0, min=0, max=64),
+        Parm('twist', "Twist Offset", 'int', default=0),
+        Parm('mergecaps', "Merge Bridged Polygons", 'bool', default=True,
+             description="Remove closed polygons whose edges were bridged (open the tube ends)"),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs)
+        if geo.num_points == 0:
+            return geo
+
+        def fn(bm):
+            if p.mergecaps:
+                faces = [f for f in bm.faces]
+                if faces and len(faces) <= 2:
+                    # Two caps (e.g. two closed circles): bridge their outlines instead.
+                    bmesh.ops.delete(bm, geom=faces, context='FACES_ONLY')
+            edges = [e for e in bm.edges if e.is_boundary or e.is_wire]
+            if not edges:
+                raise CookError("PolyBridge needs open boundaries or curves to bridge")
+            try:
+                res = bmesh.ops.bridge_loops(bm, edges=edges, use_pairs=False, use_cyclic=False,
+                                             twist_offset=p.twist)
+            except RuntimeError as ex:
+                raise CookError("Can't bridge: %s" % ex)
+            if p.divisions > 0 and res.get('edges'):
+                bmesh.ops.subdivide_edgering(bm, edges=res['edges'], cuts=p.divisions)
+        return _with_bmesh(geo, fn)
