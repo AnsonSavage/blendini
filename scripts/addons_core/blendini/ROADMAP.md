@@ -17,13 +17,15 @@ and needs a real Blender session to confirm.
 
 ### VEX
 - [x] Lexer / parser / SIMD masked interpreter (if/else, loops, break/continue, return, user
-      functions with pass by reference, recursion, `#define` macros, casts, swizzles, arrays)
+      functions with pass by reference, recursion, `#define` macros, casts, swizzles, arrays,
+      structs with methods, dicts, hex literals, return type overloading through expressions)
 - [x] 290+ builtins: math, vectors, matrices, quaternions, noise, geometry read/write, groups, half-edges,
       nearpoints, pcopen/pcfilter/pciterate/pcimport, xyzdist/primuv/minpos/intersect, strings and
       regular expressions, arrays, unique values, spline, sampling, colormap, ch*/chramp
 - [x] Wrangles: point / prim / vertex / detail / numbers, spare parameters, ramps, presets menu
-- [x] Attribute VOP (visual VEX network that generates code)
-- [x] Driver expressions on parameters evaluated through VEX (`#frame * 0.1`), keyframes
+- [x] Attribute VOP and Volume VOP (visual VEX networks that generate code)
+- [x] Driver expressions on parameters evaluated through VEX (`#frame * 0.1`, `$F`, `$T`, `$FPS`), keyframes
+- [x] Unconnected inputs read as empty geometry; wrong-typed calls report the function and argument types
 
 ### SOPs (158)
 - [x] Primitives, manipulation, polygon, attribute, group, copy/instancing, terrain, utility,
@@ -55,6 +57,9 @@ and needs a real Blender session to confirm.
       (also makes command line renders correct)
 - [x] Fixed: intermittent crash when a glued RBD simulation was removed (constraints are now
       freed before their Bullet bodies); stress-tested with random build / remove orders
+- [x] Random network fuzzer (`tests/fuzz_networks.py`) and a builtin fuzzer: fixed empty-input,
+      negative seed, divide-by-zero and runaway voxel / grid cases (VDB, Remesh, FLIP, Volume guards),
+      vectorized slow SOPs (Revolve, Skin, Relax)
 
 ## Next (in priority order)
 
