@@ -2556,3 +2556,97 @@ class SplitSOP(SOP):
             inside.delete_points(~mask)
             outside.delete_points(mask)
         return [inside, outside]
+
+
+@register_sop
+class RestSOP(SOP):
+    id = 'rest'
+    label = "Rest Position"
+    category = 'Attribute'
+    inputs = 1
+    icon = 'PINNED'
+    parms = (
+        Parm('attrib', "Attribute", 'string', default='rest'),
+        Parm('restnormal', "Also Store N as restN", 'bool', default=False),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs).copy()
+        geo.attribs[POINT][p.attrib or 'rest'] = geo.P.copy()
+        if p.restnormal:
+            N = geo.attribs[POINT].get('N')
+            geo.attribs[POINT]['restN'] = N.copy() if N is not None else geo.point_normals()
+        return geo
+
+
+@register_sop
+class RelaxSOP(SOP):
+    id = 'relax'
+    label = "Relax"
+    category = 'Manipulate'
+    inputs = 2
+    input_labels = ("Points to Relax", "Surface to Stay On (optional)")
+    icon = 'STICKY_UVS_VERT'
+    description = "Push points apart so they are evenly spaced (stays on the surface of input 2)"
+    parms = (
+        Parm('iterations', "Iterations", 'int', default=10, min=0, max=200),
+        Parm('radius', "Radius (0 = automatic)", 'float', default=0.0, min=0),
+        Parm('strength', "Step Size", 'float', default=0.5, min=0, max=1),
+    )
+
+    def cook(self, inputs, p, ctx):
+        from ..core.spatial import closest
+        from ..vex.builtins import _near_search
+        geo = _in(inputs, 0).copy()
+        surface = _in(inputs, 1)
+        n = geo.num_points
+        if n < 2 or p.iterations <= 0:
+            return geo
+        P = geo.P.copy()
+        lo, hi = geo.bbox()
+        if p.radius > 0:
+            r = p.radius
+        else:
+            # Automatic: spacing of n points spread over the bounding area.
+            ext = np.sort(np.maximum(hi - lo, 1e-9))[::-1]
+            r = 2.0 * np.sqrt(ext[0] * ext[1] / n) if ext[1] > 1e-6 * ext[0] else 2.0 * ext[0] / n
+        for _ in range(int(p.iterations)):
+            res = _near_search(P, P, np.full(n, r), np.full(n, 16), np.arange(n))
+            disp = np.zeros_like(P)
+            for i, nb in enumerate(res):
+                nb = nb[nb != i]
+                if len(nb) == 0:
+                    continue
+                d = P[i] - P[nb]
+                dist = np.linalg.norm(d, axis=1, keepdims=True)
+                push = d / np.maximum(dist, 1e-12) * np.maximum(r - dist, 0)
+                disp[i] = push.sum(axis=0) * 0.5
+            P = P + disp * p.strength
+            if surface.num_prims:
+                loc, _nrm, prim, _dist = closest(surface, P)
+                P = np.where((prim >= 0)[:, None], loc, P)
+        geo.P = P
+        return geo
+
+
+@register_sop
+class AttribStringEditSOP(SOP):
+    id = 'attribstringedit'
+    label = "Attribute String Edit"
+    category = 'Attribute'
+    inputs = 1
+    icon = 'SYNTAX_OFF'
+    parms = (
+        Parm('class', "Class", 'enum', items=CLASS_ALL),
+        Parm('attrib', "Attribute", 'string', default='name'),
+        Parm('find', "From", 'string', default='piece'),
+        Parm('replace', "To", 'string', default='chunk'),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs).copy()
+        arr = geo.attribs[p['class']].get(p.attrib)
+        if arr is None or arr.dtype != object:
+            return geo
+        geo.attribs[p['class']][p.attrib] = np.array([str(s).replace(p.find, p.replace) for s in arr], dtype=object)
+        return geo
