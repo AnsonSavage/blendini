@@ -1355,10 +1355,20 @@ class BLENDINI_MT_tab(bpy.types.Menu):
     def draw(self, context):
         layout = self.layout
         layout.operator_context = 'INVOKE_REGION_WIN'
-        if layout.operator_context == 'EXEC_REGION_WIN':
-            pass
         for menu in CATEGORY_MENUS:
             layout.menu(menu.bl_idname)
+        _draw_layout_items(layout)
+
+
+def _draw_layout_items(layout):
+    """Houdini's network boxes and dots are Blender's frames and reroutes."""
+    layout.separator()
+    op = layout.operator("node.add_node", text="Network Box", icon='OBJECT_HIDDEN')
+    op.type = "NodeFrame"
+    op.use_transform = True
+    op = layout.operator("node.add_node", text="Dot (Reroute)", icon='DOT')
+    op.type = "NodeReroute"
+    op.use_transform = True
 
 
 def draw_add_menu(self, context):
@@ -1367,6 +1377,7 @@ def draw_add_menu(self, context):
     layout = self.layout
     for menu in CATEGORY_MENUS:
         layout.menu(menu.bl_idname)
+    _draw_layout_items(layout)
 
 
 class BLENDINI_OT_tab_menu(bpy.types.Operator):

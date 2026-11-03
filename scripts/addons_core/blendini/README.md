@@ -107,6 +107,7 @@ See [ROADMAP.md](ROADMAP.md) for what is done and what is planned.
 | Subnets / digital assets | Subnetwork node, **I** / **U** to dive in and out, promoted parameters (`ch("name")` inside) |
 | Packed primitives | *Pack and Instance* on Copy to Points, Pack, Assemble; rendered as Blender instances |
 | File Cache, .bgeo | File Cache SOP with lossless .npz files |
+| Network boxes, dots | Network Box (Blender frame) and Dot (reroute) in the TAB menu's Layout section |
 | SOP Solver, Vellum, RBD (Bullet), FLIP, Pyro | Solver (VEX), Vellum Cloth (PBD), RBD Bullet Solver, Fluid Solver (PBF) + Particle Fluid Surface, Pyro Solver (Smoke) |
 | VDB / volumes, Volume Wrangle | Native voxel volumes (Volume, Volume from Polygons, **Volume Wrangle** with `@density`, Convert Volume). Fog volumes render as smoke through a Blender Volume object (OpenVDB). OpenVDB through Geometry Nodes for Particle Fluid Surface and VDB Reshape |
 | Mantra / Karma | Cycles / EEVEE; `Cd` is rendered by the automatic *Blendini Cd* material |

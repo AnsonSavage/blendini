@@ -75,4 +75,7 @@ def _node_categories():
                  if sop.category == cat]
         if items:
             cats.append(BlendiniCategory("BLENDINI_" + cat.upper(), cat, items=items))
+    # Houdini's network boxes and dots: Blender's frame and reroute nodes.
+    cats.append(BlendiniCategory("BLENDINI_LAYOUT", "Layout", items=[NodeItem("NodeFrame", label="Network Box (Frame)"),
+                                                                     NodeItem("NodeReroute", label="Dot (Reroute)")]))
     return cats
