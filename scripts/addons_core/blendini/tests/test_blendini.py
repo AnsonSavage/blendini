@@ -718,6 +718,10 @@ class TestEverydaySops(unittest.TestCase):
         out = REGISTRY['filecache'].cook([cook_sop('box')], p, CookContext(frame=3))
         self.assertEqual(out.num_points, full.num_points)
 
+    def test_material_sop(self):
+        out = cook_sop('material', [cook_sop('box')], group='0-2', material='Red')
+        self.assertEqual(list(out.attribs['prim']['shop_materialpath']), ['Red'] * 3 + [''] * 3)
+
     def test_skin(self):
         rows = Geometry.from_polys([[x, y, 0] for y in range(3) for x in range(4)],
                                    [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], closed=False)

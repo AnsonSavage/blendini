@@ -17,6 +17,31 @@ _SKIP_IN = {'position', 'sharp_face', 'sharp_edge', 'material_index', '.edge_ver
             'UVMap', 'normal'}
 
 
+def _assign_materials(geo, mesh, face_prims):
+    """Material slots from the 'shop_materialpath' (or 'material') primitive attribute: Blender
+    material names, '' keeps the default Cd material."""
+    import bpy
+    attr = geo.attribs[PRIM].get('shop_materialpath')
+    if attr is None:
+        attr = geo.attribs[PRIM].get('material')
+    if attr is not None and attr.dtype == object and len(face_prims):
+        from .display import cd_material
+        names = [str(n).rsplit('/', 1)[-1] for n in attr[face_prims].tolist()]
+        uniq = sorted({n for n in names if n})
+        mesh.materials.clear()
+        mesh.materials.append(cd_material())
+        for n in uniq:
+            mesh.materials.append(bpy.data.materials.get(n))
+        slot = {n: i + 1 for i, n in enumerate(uniq)}
+        mesh.polygons.foreach_set("material_index", np.array([slot.get(n, 0) for n in names], dtype=np.int32))
+        mesh["blendini_materials"] = True
+    elif mesh.get("blendini_materials"):
+        from .display import cd_material
+        mesh.materials.clear()
+        mesh.materials.append(cd_material())
+        del mesh["blendini_materials"]
+
+
 def geo_to_mesh(geo, mesh):
     """Write geometry into an existing mesh datablock (replacing its contents)."""
     mesh.clear_geometry()
@@ -68,6 +93,7 @@ def geo_to_mesh(geo, mesh):
         mesh.edges.foreach_set("vertices", edges.ravel())
 
     mesh.update(calc_edges=True, calc_edges_loose=True)
+    _assign_materials(geo, mesh, face_prims)
 
     # Attributes
     loop_src = np.nonzero(vmask)[0]

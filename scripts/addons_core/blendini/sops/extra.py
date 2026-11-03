@@ -910,3 +910,29 @@ class FileCacheSOP(SOP):
             return Geometry()
         ctx.warn("No cache file for this frame: %s" % path)
         return _in(inputs).copy()
+
+
+@register_sop
+class MaterialSOP(SOP):
+    id = 'material'
+    label = "Material"
+    category = 'Utility'
+    inputs = 1
+    icon = 'MATERIAL'
+    description = "Assign a Blender material to primitives (writes the shop_materialpath primitive attribute)"
+    parms = (
+        Parm('group', "Group", 'string'),
+        Parm('material', "Material", 'material'),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs).copy()
+        n = geo.num_prims
+        arr = geo.attribs['prim'].get('shop_materialpath')
+        if arr is None or arr.dtype != object:
+            arr = np.full(n, '', dtype=object)
+        else:
+            arr = arr.copy()
+        arr[parse_group_pattern(geo, 'prim', p.group)] = p.material.strip()
+        geo.attribs['prim']['shop_materialpath'] = arr
+        return geo

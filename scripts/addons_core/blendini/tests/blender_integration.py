@@ -152,6 +152,26 @@ def main():
         finally:
             bpy.data.node_groups.remove(tree)
 
+    def material_slots():
+        from blendini.bl.examples import _finish
+        bpy.data.materials.new("IntegrationRed")
+        tree = bpy.data.node_groups.new("material_test", "BlendiniSOPTree")
+        try:
+            box = tree.nodes.new(NODE_PREFIX + 'box')
+            m = tree.nodes.new(NODE_PREFIX + 'material')
+            m.p_group, m.p_material = '0-2', 'IntegrationRed'
+            tree.links.new(box.outputs[0], m.inputs[0])
+            _finish(tree, m)
+            cook.cook_tree(tree)
+            me = tree.target.data
+            assert [x.name for x in me.materials][1:] == ['IntegrationRed']
+            assert [p.material_index for p in me.polygons] == [1, 1, 1, 0, 0, 0]
+        finally:
+            target = tree.target
+            bpy.data.node_groups.remove(tree)
+            if target is not None:
+                bpy.data.objects.remove(target)
+
     def unregister():
         blendini.unregister()
 
@@ -162,6 +182,7 @@ def main():
     check("rigid body scene lifecycle", rbd_scene_lifecycle)
     check("viewport handle bindings", handle_bindings)
     check("file cache save / load", file_cache)
+    check("material slots from shop_materialpath", material_slots)
     check("unregister", unregister)
     print("\n%d failure(s)" % len(failures))
     return 1 if failures else 0

@@ -105,6 +105,8 @@ def draw_parms(node, context, layout, compact=False):
             col.prop_search(node, pname, bpy.data, "node_groups", text=parm.label)
         elif parm.type == 'image':
             col.prop_search(node, pname, bpy.data, "images", text=parm.label)
+        elif parm.type == 'material':
+            col.prop_search(node, pname, bpy.data, "materials", text=parm.label)
         elif parm.type == 'vopnetwork':
             col.prop(node, "vop_tree", text=parm.label)
         elif parm.type in ('vector', 'vector2') and not compact:

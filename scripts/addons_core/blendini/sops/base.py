@@ -52,6 +52,7 @@ class Parm:
             default = {
                 'float': 0.0, 'int': 0, 'bool': False, 'vector': (0.0, 0.0, 0.0), 'vector2': (0.0, 0.0),
                 'color': (1.0, 1.0, 1.0), 'string': '', 'code': '', 'object': '', 'nodegroup': '', 'image': '', 'vopnetwork': '',
+                'material': '',
             }.get(type, items[0][0] if items else None)
         self.default = default
         self.min = min

@@ -107,6 +107,7 @@ See [ROADMAP.md](ROADMAP.md) for what is done and what is planned.
 | Subnets / digital assets | Subnetwork node, **I** / **U** to dive in and out, promoted parameters (`ch("name")` inside) |
 | Packed primitives | *Pack and Instance* on Copy to Points, Pack, Assemble; rendered as Blender instances |
 | File Cache, .bgeo | File Cache SOP with lossless .npz files |
+| Material SOP, shop_materialpath | Material SOP or a `s@shop_materialpath = "MyMaterial";` wrangle: Blender material slots per primitive |
 | Network boxes, dots | Network Box (Blender frame) and Dot (reroute) in the TAB menu's Layout section |
 | SOP Solver, Vellum, RBD (Bullet), FLIP, Pyro | Solver (VEX), Vellum Cloth (PBD), RBD Bullet Solver, Fluid Solver (PBF) + Particle Fluid Surface, Pyro Solver (Smoke) |
 | VDB / volumes, Volume Wrangle | Native voxel volumes (Volume, Volume from Polygons, **Volume Wrangle** with `@density`, Convert Volume). Fog volumes render as smoke through a Blender Volume object (OpenVDB). OpenVDB through Geometry Nodes for Particle Fluid Surface and VDB Reshape |
@@ -141,7 +142,7 @@ See [ROADMAP.md](ROADMAP.md) for what is done and what is planned.
 | Group     | Group Create (pattern / bounding box / normal / random / `@expression`), Group by Range, Group from Attribute Boundary, Group Combine, Group Promote, Group Expand, Blast, Delete, Split (two outputs) |
 | Copy      | Copy to Points (orient, N/up, pscale, scale, piece variants, **Pack and Instance**), Pack, Unpack, Assemble, Copy and Transform, Scatter, Points from Volume\* |
 | VEX       | Attribute Wrangle (run over points / prims / vertices / detail / numbers), **Point Wrangle**, Primitive Wrangle, Detail Wrangle, **Attribute VOP** (visual VEX: Globals, Bind, Parameter, Ramp, math, logic / two-way switch, vector, noise and color VOPs; dive in with I; shows the generated VEX) |
-| Utility   | **File Cache** (Save to Disk per frame / Load from Disk: lossless .npz with attributes, groups, volumes and packed instances; `$F4 $OS $HIP` variables), File (.obj), Extract Centroid, **Subnetwork** + Subnet Input (dive in with I, up with U; promoted parameters readable inside with `ch()`), Merge (multi-input), Switch, Switch-If, Null, Output, Sort, Time Shift, **Block Begin / Block End (For-Each by pieces, count or feedback)** |
+| Utility   | **Material** (assigns Blender materials by group: `shop_materialpath` becomes material slots), **File Cache** (Save to Disk per frame / Load from Disk: lossless .npz with attributes, groups, volumes and packed instances; `$F4 $OS $HIP` variables), File (.obj), Extract Centroid, **Subnetwork** + Subnet Input (dive in with I, up with U; promoted parameters readable inside with `ch()`), Merge (multi-input), Switch, Switch-If, Null, Output, Sort, Time Shift, **Block Begin / Block End (For-Each by pieces, count or feedback)** |
 | Blender   | Object Merge (meshes and curves, several objects / wildcards), Solidify\*, **Blender Modifier\*** (any modifier, including Geometry Nodes groups) |
 
 \* These use Blender as the backend. The geometry passes through a real Blender modifier,
