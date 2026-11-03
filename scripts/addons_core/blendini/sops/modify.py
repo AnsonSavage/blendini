@@ -477,11 +477,19 @@ class DivideSOP(SOP):
     category = 'Polygon'
     inputs = 1
     icon = 'MOD_TRIANGULATE'
-    description = "Triangulate polygons (fan triangulation)"
-    parms = (Parm('group', "Group", 'string'),)
+    description = "Triangulate polygons, or cut them into bricks along axis-aligned planes (Bricker)"
+    parms = (
+        Parm('group', "Group", 'string'),
+        Parm('mode', "Mode", 'enum', items=[('triangulate', "Triangulate", ""), ('brick', "Bricker", "")]),
+        Parm('size', "Brick Size", 'vector', default=(0.5, 0.5, 0.5), hide_when={'mode': 'triangulate'}),
+        Parm('offset', "Brick Offset", 'vector', hide_when={'mode': 'triangulate'}),
+    )
 
     def cook(self, inputs, p, ctx):
         geo = _in(inputs)
+        if p.get('mode', 'triangulate') == 'brick':
+            return brick_polygons(geo, np.asarray(p.size, dtype=np.float64), np.asarray(p.offset, dtype=np.float64),
+                                  parse_group_pattern(geo, PRIM, p.group))
         sel = parse_group_pattern(geo, PRIM, p.group)
         tris, tri_prim = geo.triangulate_flat()
         keep = ~sel | ~geo.prim_closed | (geo.prim_sizes() <= 3)
@@ -497,6 +505,90 @@ class DivideSOP(SOP):
         for name, g in geo.groups[PRIM].items():
             out.groups[PRIM][name][start:] = g[src_prim]
         return out
+
+
+def brick_polygons(geo, size, offset, sel=None, max_cells=2_000_000):
+    """Split polygons along the planes x = offset + k * size (and y, z). Points created on an edge are
+    shared by the polygons using that edge, so the result stays connected."""
+    if geo.num_prims == 0:
+        return geo.copy()
+    lo, hi = geo.bbox()
+    size = np.where(size <= 0, np.inf, size)
+    counts = np.where(np.isfinite(size), np.ceil((hi - lo) / np.where(np.isfinite(size), size, 1)), 1)
+    if float(np.prod(np.maximum(counts, 1))) > max_cells:
+        raise CookError("Divide: brick size too small for this geometry")
+    if sel is None:
+        sel = np.ones(geo.num_prims, dtype=bool)
+    pnames = [n for n, a in geo.attribs[POINT].items() if n != 'P' and a.dtype != object]
+    P = [tuple(x) for x in geo.P.tolist()]
+    pattr = {n: [np.asarray(v) for v in geo.attribs[POINT][n]] for n in pnames}
+    polys = [(geo.prim_points(i).tolist(), i) for i in range(geo.num_prims)]
+    edge_cache = {}
+
+    def split_point(a, b, axis, value):
+        key = (min(a, b), max(a, b), axis, value)
+        if key in edge_cache:
+            return edge_cache[key]
+        pa, pb = P[a], P[b]
+        t = (value - pa[axis]) / (pb[axis] - pa[axis])
+        P.append(tuple(pa[k] + (pb[k] - pa[k]) * t for k in range(3)))
+        for n in pnames:
+            pattr[n].append(pattr[n][a] + (pattr[n][b] - pattr[n][a]) * t)
+        edge_cache[key] = len(P) - 1
+        return edge_cache[key]
+
+    for axis in range(3):
+        if not np.isfinite(size[axis]):
+            continue
+        out_polys = []
+        for pts, src in polys:
+            if not sel[src] or len(pts) < 3 or not geo.prim_closed[src]:
+                out_polys.append((pts, src))
+                continue
+            coords = [P[i][axis] for i in pts]
+            k0 = int(np.floor((min(coords) - offset[axis]) / size[axis])) + 1
+            k1 = int(np.ceil((max(coords) - offset[axis]) / size[axis])) - 1
+            pieces = [pts]
+            for k in range(k0, k1 + 1):
+                value = offset[axis] + k * size[axis]
+                nxt = []
+                for poly in pieces:
+                    below, above = [], []
+                    m = len(poly)
+                    for j in range(m):
+                        a, b = poly[j], poly[(j + 1) % m]
+                        da, db = P[a][axis] - value, P[b][axis] - value
+                        if da <= 0:
+                            below.append(a)
+                        if da >= 0:
+                            above.append(a)
+                        if (da < 0 < db) or (db < 0 < da):
+                            c = split_point(a, b, axis, value)
+                            below.append(c)
+                            above.append(c)
+                    for part in (below, above):
+                        if len(part) >= 3:
+                            nxt.append(part)
+                pieces = nxt
+            out_polys.extend((poly, src) for poly in pieces)
+        polys = out_polys
+    out = Geometry()
+    out.P = np.array(P)
+    for n in pnames:
+        out.attribs[POINT][n] = np.array(pattr[n], dtype=geo.attribs[POINT][n].dtype)
+    for n, a in geo.attribs[POINT].items():
+        if a.dtype == object:
+            ext = np.empty(len(P), dtype=object)
+            ext[:] = ''
+            ext[:len(a)] = a
+            out.attribs[POINT][n] = ext
+    out.add_prims([poly for poly, _ in polys])
+    src = np.array([s_ for _, s_ in polys], dtype=np.int64)
+    for n, a in geo.attribs[PRIM].items():
+        out.attribs[PRIM][n] = a[src]
+    for n, g in geo.groups[PRIM].items():
+        out.groups[PRIM][n] = g[src]
+    return out
 
 
 @register_sop

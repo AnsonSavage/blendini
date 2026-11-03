@@ -985,6 +985,15 @@ class TestEverydaySops(unittest.TestCase):
             c = cook_sop('measure', [s], measure='curvature', attribname='curv')
             self.assertAlmostEqual(float(c.attribs['point']['curv'].mean()), 1.0 / r, delta=0.05)
 
+    def test_divide_bricker(self):
+        b = cook_sop('box', size=(2.0, 2.0, 2.0))
+        d = cook_sop('divide', [b], mode='brick', size=(0.5, 0.5, 0.5))
+        self.assertEqual((d.num_prims, d.num_points), (96, 98))              # shared edge points: watertight
+        self.assertAlmostEqual(float(d.prim_areas().sum()), 24.0)
+        s = cook_sop('sphere')
+        bs = cook_sop('divide', [s], mode='brick', size=(0.3, 0.3, 0.3))
+        self.assertAlmostEqual(float(bs.prim_areas().sum()), float(s.prim_areas().sum()), places=6)
+
     def test_skin(self):
         rows = Geometry.from_polys([[x, y, 0] for y in range(3) for x in range(4)],
                                    [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], closed=False)
