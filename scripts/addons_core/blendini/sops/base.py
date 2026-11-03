@@ -70,6 +70,8 @@ class SOP:
     inputs = 0
     input_labels = ()
     multi_input = False   # first input accepts many links (Merge)
+    outputs = 1           # cook() returns a list of geometries when > 1
+    output_labels = ()
     parms = ()
     icon = 'NONE'
     time_dependent = False

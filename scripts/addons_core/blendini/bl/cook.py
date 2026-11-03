@@ -135,6 +135,38 @@ def _input_nodes(socket):
     return out
 
 
+def _input_links(socket):
+    """Like _input_nodes, but (node, output index) pairs, for nodes with several outputs."""
+    out = []
+    links = sorted(socket.links, key=lambda l: getattr(l, 'multi_input_sort_id', 0)) if socket.is_multi_input else socket.links
+    for link in links:
+        if not link.is_valid or link.is_muted:
+            continue
+        node, sock = link.from_node, link.from_socket
+        while node is not None and node.bl_idname == 'NodeReroute':
+            if not node.inputs[0].links:
+                node = None
+                break
+            up = node.inputs[0].links[0]
+            node, sock = up.from_node, up.from_socket
+        if node is not None and isinstance(node, BlendiniNodeBase):
+            idx = list(node.outputs).index(sock) if sock in list(node.outputs) else 0
+            out.append((node, idx))
+    return out
+
+
+def _cook_output(node, index, ctx_base, visiting):
+    """Cook a node and return (geometry, signature) of one of its outputs."""
+    geo, sig = cook_node(node, ctx_base, visiting)
+    if index == 0:
+        return geo, sig
+    entry = _cache.get(_node_key(node), {})
+    outs = entry.get('outputs')
+    if outs and index < len(outs):
+        return outs[index], (sig, index)
+    return Geometry(), (sig, index)
+
+
 def _is_time_dependent(node, parms):
     sop = node.sop
     if sop.id == 'solverwrangle':
@@ -185,15 +217,15 @@ def cook_node(node, ctx_base, visiting=None):
             f = node.p_frame if node.p_mode == 'frame' else ctx_base['frame'] + node.p_frame
             upstream_ctx = dict(ctx_base, frame=float(f), time=float(f - 1) / ctx_base['fps'])
         for sock in node.inputs:
-            ups = _input_nodes(sock)
+            ups = _input_links(sock)
             if sock.is_multi_input:
-                for up in ups:
-                    g, s = cook_node(up, upstream_ctx, visiting)
+                for up, out_idx in ups:
+                    g, s = _cook_output(up, out_idx, upstream_ctx, visiting)
                     inputs.append(g)
                     input_sigs.append(s)
             else:
                 if ups:
-                    g, s = cook_node(ups[0], upstream_ctx, visiting)
+                    g, s = _cook_output(ups[0][0], ups[0][1], upstream_ctx, visiting)
                 else:
                     g, s = None, None
                 inputs.append(g)
@@ -221,7 +253,8 @@ def cook_node(node, ctx_base, visiting=None):
 
         if node.mute:
             geo = inputs[0] if inputs and inputs[0] is not None else Geometry()
-            _cache[key] = {'sig': sig, 'geo': geo, 'time': 0.0, 'messages': [], 'error': None, 'bypassed': True}
+            _cache[key] = {'sig': sig, 'geo': geo, 'time': 0.0, 'messages': [], 'error': None, 'bypassed': True,
+                           'outputs': [geo] * max(len(node.outputs), 1)}
             return geo, sig
 
         ctx = CookContext(time=ctx_base['time'], frame=ctx_base['frame'], fps=ctx_base['fps'],
@@ -231,13 +264,13 @@ def cook_node(node, ctx_base, visiting=None):
         if sop.id == 'edit':
             ctx.edit_deltas = node.edit_deltas()
         if sop.id == 'trail':
-            ups = _input_nodes(node.inputs[0])
+            ups = _input_links(node.inputs[0])
             if ups:
                 f = ctx_base['frame'] - 1
                 prev_ctx = dict(ctx_base, frame=f, time=float(f - 1) / ctx_base['fps'])
-                ctx.previous_input, _ps = cook_node(ups[0], prev_ctx, visiting)
+                ctx.previous_input, _ps = _cook_output(ups[0][0], ups[0][1], prev_ctx, visiting)
                 # Re-cook at the current frame so the cache holds the current result upstream.
-                cook_node(ups[0], ctx_base, visiting)
+                _cook_output(ups[0][0], ups[0][1], ctx_base, visiting)
         t0 = time.perf_counter()
         error = None
         try:
@@ -253,9 +286,16 @@ def cook_node(node, ctx_base, visiting=None):
             error = "%s: %s" % (type(ex).__name__, ex)
             geo = Geometry()
         dt = time.perf_counter() - t0
+        outputs = None
+        if isinstance(geo, (list, tuple)):
+            # Multi-output SOP: output 0 is the node's main result.
+            outputs = [g if g is not None else Geometry() for g in geo] or [Geometry()]
+            geo = outputs[0]
+        elif error and len(node.outputs) > 1:
+            outputs = [geo] * len(node.outputs)
         _cache[key] = {
             'sig': sig, 'geo': geo, 'time': dt, 'messages': ctx.messages[-200:], 'warnings': ctx.warnings,
-            'error': error,
+            'error': error, 'outputs': outputs,
         }
         if error:
             # Don't keep a signature for failed cooks so fixing upstream retries.
@@ -268,9 +308,9 @@ def cook_node(node, ctx_base, visiting=None):
 def _cook_subnet(node, ctx_base, visiting):
     inputs, sigs = [], []
     for sock in node.inputs:
-        ups = _input_nodes(sock)
+        ups = _input_links(sock)
         if ups:
-            g, s = cook_node(ups[0], ctx_base, visiting)
+            g, s = _cook_output(ups[0][0], ups[0][1], ctx_base, visiting)
         else:
             g, s = None, None
         inputs.append(g)
@@ -337,9 +377,9 @@ def _cook_foreach(end, ctx_base, visiting):
     begin = _find_begin(end)
     if begin is None:
         raise CookError("%s: no Block Begin node found upstream" % end.name)
-    src_nodes = _input_nodes(begin.inputs[0]) if begin.inputs else []
-    if src_nodes:
-        src, src_sig = cook_node(src_nodes[0], ctx_base, visiting)
+    src_links = _input_links(begin.inputs[0]) if begin.inputs else []
+    if src_links:
+        src, src_sig = _cook_output(src_links[0][0], src_links[0][1], ctx_base, visiting)
     else:
         src, src_sig = Geometry(), None
     parms = end.parm_values()
@@ -349,7 +389,7 @@ def _cook_foreach(end, ctx_base, visiting):
     if entry is not None and entry.get('sig') == sig and 'geo' in entry:
         return entry['geo'], sig
     t0 = time.perf_counter()
-    end_inputs = _input_nodes(end.inputs[0])
+    end_inputs = _input_links(end.inputs[0])
     error = None
     results = []
     geo = src
@@ -363,7 +403,7 @@ def _cook_foreach(end, ctx_base, visiting):
                 ctx2 = dict(ctx_base)
                 ctx2['foreach'] = dict(ctx_base.get('foreach', {}), **{begin.name: (piece, (src_sig, i))})
                 ctx2['loopsig'] = (ctx_base.get('loopsig'), begin.name, src_sig, i)
-                geo, _s = cook_node(end_inputs[0], ctx2, visiting)
+                geo, _s = _cook_output(end_inputs[0][0], end_inputs[0][1], ctx2, visiting)
         else:
             if parms['method'] == 'count':
                 # Like Houdini's "By Count": the whole input, N times, results merged.
@@ -378,7 +418,7 @@ def _cook_foreach(end, ctx_base, visiting):
                 ctx2 = dict(ctx_base)
                 ctx2['foreach'] = dict(ctx_base.get('foreach', {}), **{begin.name: (piece, (src_sig, i))})
                 ctx2['loopsig'] = (ctx_base.get('loopsig'), begin.name, src_sig, i)
-                g, _s = cook_node(end_inputs[0], ctx2, visiting)
+                g, _s = _cook_output(end_inputs[0][0], end_inputs[0][1], ctx2, visiting)
                 results.append(g)
             geo = merge(results)
             for k in ('iteration', 'numiterations'):

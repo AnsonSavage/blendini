@@ -2525,3 +2525,34 @@ class AttribInterpolateSOP(SOP):
                     vals = vals / np.where(ln == 0, 1, ln)
                 pts.attribs[POINT][name] = vals if name != 'P' else vals.astype(np.float64)
         return pts
+
+
+@register_sop
+class SplitSOP(SOP):
+    id = 'split'
+    label = "Split"
+    category = 'Group'
+    inputs = 1
+    outputs = 2
+    output_labels = ("In Group", "Not In Group")
+    icon = 'MOD_EDGESPLIT'
+    description = "Split geometry into two outputs: the selected elements and the rest"
+    parms = (
+        Parm('group', "Group", 'string', default='@P.y > 0', description="Group name, numbers or @expression"),
+        Parm('grouptype', "Group Type", 'enum', items=CLASS_PP),
+        Parm('negate', "Invert Selection", 'bool', default=False),
+    )
+
+    def cook(self, inputs, p, ctx):
+        geo = _in(inputs)
+        mask = parse_group_pattern(geo, p.grouptype, p.group)
+        if p.negate:
+            mask = ~mask
+        inside, outside = geo.copy(), geo.copy()
+        if p.grouptype == PRIM:
+            inside.delete_prims(~mask)
+            outside.delete_prims(mask)
+        else:
+            inside.delete_points(~mask)
+            outside.delete_points(mask)
+        return [inside, outside]

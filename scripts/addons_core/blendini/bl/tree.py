@@ -150,7 +150,9 @@ class BlendiniNodeBase:
         for i in range(sop.inputs):
             label = sop.input_labels[i] if i < len(sop.input_labels) else "Input %d" % (i + 1)
             self.inputs.new(SOCKET_ID, label, use_multi_input=(sop.multi_input and i == 0))
-        self.outputs.new(SOCKET_ID, "Output")
+        for i in range(max(getattr(sop, 'outputs', 1), 1)):
+            label = sop.output_labels[i] if i < len(sop.output_labels) else ("Output" if i == 0 else "Output %d" % (i + 1))
+            self.outputs.new(SOCKET_ID, label)
         self.name = unique_node_name(self.id_data, sop.id)
         self.width = 160
         self.use_custom_color = True

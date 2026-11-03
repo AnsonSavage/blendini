@@ -24,7 +24,7 @@ and needs a real Blender session to confirm.
 - [x] Attribute VOP (visual VEX network that generates code)
 - [x] Driver expressions on parameters evaluated through VEX (`#frame * 0.1`), keyframes
 
-### SOPs (105)
+### SOPs (106)
 - [x] Primitives, manipulation, polygon, attribute, group, copy/instancing, terrain, utility,
       Blender-backed (modifiers, bmesh, BVH, Bullet, OpenVDB) — see README for the full list
 - [x] Simulations: Solver (VEX), Vellum-style cloth (PBD), RBD (Bullet), PBF fluid + meshing
@@ -47,7 +47,7 @@ and needs a real Blender session to confirm.
 
 ## Later / ideas
 
-- [ ] Multi-output nodes (Split, Two Way Switch outputs)
+- [x] Multi-output nodes (cook engine reads the linked output) with the Split SOP
 - [x] VEX function overloading by signature, function-like `#define` macros
 - [ ] VEX `struct`s
 - [ ] NURBS / Bézier primitives, volumes as a native primitive type
