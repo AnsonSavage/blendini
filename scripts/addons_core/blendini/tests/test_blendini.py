@@ -994,6 +994,12 @@ class TestEverydaySops(unittest.TestCase):
         bs = cook_sop('divide', [s], mode='brick', size=(0.3, 0.3, 0.3))
         self.assertAlmostEqual(float(bs.prim_areas().sum()), float(s.prim_areas().sum()), places=6)
 
+    def test_fuse_grid(self):
+        s = cook_sop('sphere', type='polymesh', freq=3)
+        g = cook_sop('fuse', [s], mode='grid', gridsize=(0.25, 0.25, 0.25))
+        self.assertLess(g.num_points, s.num_points)
+        np.testing.assert_allclose(np.round(g.P / 0.25) * 0.25, g.P, atol=1e-9)
+
     def test_skin(self):
         rows = Geometry.from_polys([[x, y, 0] for y in range(3) for x in range(4)],
                                    [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], closed=False)

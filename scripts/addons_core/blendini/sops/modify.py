@@ -366,10 +366,26 @@ class FuseSOP(SOP):
     category = 'Polygon'
     inputs = 1
     icon = 'AUTOMERGE_ON'
-    parms = (Parm('dist', "Snap Distance", 'float', default=0.001, min=0, soft_max=1),)
+    parms = (
+        Parm('mode', "Snap", 'enum', items=[('distance', "Near Points", ""), ('grid', "Grid", "Round positions to a grid")]),
+        Parm('dist', "Snap Distance", 'float', default=0.001, min=0, soft_max=1, hide_when={'mode': 'grid'}),
+        Parm('gridsize', "Grid Spacing", 'vector', default=(0.1, 0.1, 0.1), hide_when={'mode': 'distance'}),
+        Parm('gridoffset', "Grid Offset", 'vector', hide_when={'mode': 'distance'}),
+        Parm('consolidate', "Consolidate Snapped Points", 'bool', default=True, hide_when={'mode': 'distance'}),
+    )
 
     def cook(self, inputs, p, ctx):
-        return fuse_points(_in(inputs).copy(), p.dist)
+        geo = _in(inputs).copy()
+        if p.get('mode', 'distance') == 'grid':
+            size = np.where(np.asarray(p.gridsize, dtype=np.float64) > 0, p.gridsize, 1e-12)
+            off = np.asarray(p.gridoffset, dtype=np.float64)
+            snapped = np.round((geo.P - off) / size) * size + off
+            snapped = np.where(np.asarray(p.gridsize) > 0, snapped, geo.P)
+            geo.P = snapped
+            if p.consolidate:
+                return fuse_points(geo, 1e-9)
+            return geo
+        return fuse_points(geo, p.dist)
 
 
 @register_sop
