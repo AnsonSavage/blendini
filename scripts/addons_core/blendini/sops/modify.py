@@ -16,6 +16,23 @@ ROT_ORDERS = [(o, o.upper(), "") for o in ('xyz', 'xzy', 'yxz', 'yzx', 'zxy', 'z
 XFORM_ORDERS = [(o, o.upper(), "") for o in ('srt', 'str', 'rst', 'rts', 'tsr', 'trs')]
 
 
+def inside_mesh(mesh, pos):
+    """True for positions inside a closed polygon mesh (generalized winding number > 0.5)."""
+    from ..core.volume import winding_numbers
+    n = len(pos)
+    if mesh is None or mesh.num_prims == 0 or n == 0:
+        return np.zeros(n, dtype=bool)
+    tris, _ = mesh.triangulate_flat()
+    if not len(tris):
+        return np.zeros(n, dtype=bool)
+    lo, hi = mesh.bbox()
+    near = np.all((pos >= lo) & (pos <= hi), axis=1)
+    out = np.zeros(n, dtype=bool)
+    if near.any():
+        out[near] = winding_numbers(mesh.P, tris, np.asarray(pos)[near]) > 0.5
+    return out
+
+
 def _in(inputs, i=0):
     if len(inputs) > i and inputs[i] is not None:
         return inputs[i]
@@ -760,7 +777,8 @@ class GroupCreateSOP(SOP):
     id = 'groupcreate'
     label = "Group Create"
     category = 'Group'
-    inputs = 1
+    inputs = 2
+    input_labels = ("Geometry", "Bounding Object (optional)")
     icon = 'GROUP_VERTEX'
     parms = (
         Parm('groupname', "Group Name", 'string', default='group1'),
@@ -768,6 +786,7 @@ class GroupCreateSOP(SOP):
         Parm('mode', "Base Group", 'enum', items=[
             ('all', "Entire Geometry", ""), ('pattern', "Pattern", "Numbers, groups or @expressions"),
             ('bbox', "Bounding Box", ""), ('normal', "Normal Direction", ""), ('random', "Random", ""),
+            ('object', "Inside Bounding Object", "Inside the closed mesh on the second input"),
         ]),
         Parm('pattern', "Pattern", 'string', default='@P.y > 0', hide_when={'mode': ('all', 'bbox', 'normal', 'random')}),
         Parm('size', "Box Size", 'vector', default=(1.0, 1.0, 1.0), hide_when={'mode': ('all', 'pattern', 'normal', 'random')}),
@@ -799,6 +818,8 @@ class GroupCreateSOP(SOP):
             d = np.asarray(p.dir, dtype=np.float64)
             d = d / max(np.linalg.norm(d), 1e-12)
             mask = N @ d >= np.cos(np.radians(p.angle))
+        elif p.mode == 'object':
+            mask = inside_mesh(_in(inputs, 1), pos)
         else:
             mask = _noise.rand(np.stack([np.arange(n, dtype=np.float64), np.full(n, float(p.seed))], 1)) < p.percent / 100
         if p.invert:
@@ -2489,7 +2510,8 @@ class DeleteSOP(SOP):
     id = 'delete'
     label = "Delete"
     category = 'Group'
-    inputs = 1
+    inputs = 2
+    input_labels = ("Geometry", "Bounding Object (optional)")
     icon = 'X'
     description = "Delete points or primitives by pattern, VEX expression, bounding box, normal or random"
     parms = (
@@ -2497,6 +2519,7 @@ class DeleteSOP(SOP):
         Parm('mode', "Operation", 'enum', items=[
             ('pattern', "Delete by Pattern / Expression", "Numbers, groups or @expressions"),
             ('bbox', "Delete by Bounding Box", ""), ('normal', "Delete by Normal", ""), ('random', "Delete Randomly", ""),
+            ('object', "Delete Inside Bounding Object", "Inside the closed mesh on the second input"),
         ]),
         Parm('pattern', "Pattern", 'string', default='@P.y < 0', hide_when={'mode': ('bbox', 'normal', 'random')}),
         Parm('size', "Box Size", 'vector', default=(1.0, 1.0, 1.0), hide_when={'mode': ('pattern', 'normal', 'random')}),
@@ -2512,7 +2535,7 @@ class DeleteSOP(SOP):
     def cook(self, inputs, p, ctx):
         from . import cook_sop
         geo = _in(inputs)
-        marked = cook_sop('groupcreate', [geo], groupname='__delete', grouptype=p.entity, mode=p.mode,
+        marked = cook_sop('groupcreate', [geo, _in(inputs, 1)], groupname='__delete', grouptype=p.entity, mode=p.mode,
                           pattern=p.pattern, size=p.size, t=p.t, dir=p.dir, angle=p.angle, percent=p.percent,
                           seed=p.seed, invert=p.negate)
         mask = marked.groups[p.entity].pop('__delete')

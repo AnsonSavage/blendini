@@ -955,6 +955,14 @@ class TestEverydaySops(unittest.TestCase):
                                       [-2, -3, -4, -5, 0, -1])
         np.testing.assert_allclose(cook_sop('sort', [g], ptsort='proximity', point=(0, 1.0, 0)).P[0, 1], 1.0)
 
+    def test_group_and_delete_by_bounding_object(self):
+        g = cook_sop('grid', rows=21, cols=21, size=(4.0, 4.0))
+        s = cook_sop('sphere')
+        m = cook_sop('groupcreate', [g, s], grouptype='point', mode='object', groupname='inside').groups['point']['inside']
+        r = np.linalg.norm(g.P, axis=1)
+        self.assertTrue(np.all(r[m] < 1.0) and m.sum() > 50)
+        self.assertEqual(cook_sop('delete', [g, s], entity='point', mode='object').num_points, g.num_points - int(m.sum()))
+
     def test_skin(self):
         rows = Geometry.from_polys([[x, y, 0] for y in range(3) for x in range(4)],
                                    [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], closed=False)
