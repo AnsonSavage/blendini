@@ -7,7 +7,7 @@
 import numpy as np
 
 from .base import SOP, Parm, register_sop, upstream_changed, parse_group_pattern
-from ..core.geometry import Geometry, POINT
+from ..core.geometry import Geometry, POINT, PRIM
 
 
 def _in(inputs, i=0):
@@ -165,6 +165,248 @@ def pbd_step(state, dt, p, collider):
     state['P'], state['V'] = X, V
 
 
+# ----------------------------------------------------------------------------
+# Tearing: constraints are rebuilt from a vertex level topology, so points can be duplicated where
+# the cloth separates. Torn state lives on half-edges (vertex -> next vertex of its primitive),
+# which survive point splits.
+
+
+def _tear_init(geo, sim):
+    n_v = geo.num_vertices
+    starts, sizes = geo.prim_start, geo.prim_sizes()
+    prim = geo.vertex_prim()
+    local = np.arange(n_v) - starts[:-1][prim]
+    nxt = np.arange(n_v) + 1
+    nz = sizes > 0
+    nxt[(starts[1:] - 1)[nz]] = starts[:-1][nz]
+    closed_v = geo.prim_closed[prim] & (sizes[prim] >= 3)
+    valid = closed_v | (local < sizes[prim] - 1)
+    n = sizes[prim]
+    opp = starts[:-1][prim] + (local + np.where(n > 3, n // 2 + 1, 2)) % np.maximum(n, 1)
+    vp = geo.vtx_point.copy()
+    sim.update({
+        'vp': vp, 'nxt': nxt, 'closed_v': closed_v, 'valid': valid, 'opp': opp, 'local': local,
+        'vsize': sizes[prim], 'vtorn': np.zeros(n_v, dtype=bool),
+        'vrest': np.linalg.norm(geo.P[vp[nxt]] - geo.P[vp], axis=1),
+        'orig': np.arange(geo.num_points), 'P0': geo.P.copy(),
+    })
+    _tear_build(sim)
+
+
+def _tear_build(sim):
+    """Stretch and bend constraints from the current topology and torn half-edges."""
+    vp, nxt, valid, closed_v, vtorn = sim['vp'], sim['nxt'], sim['valid'], sim['closed_v'], sim['vtorn']
+    N = max(len(sim['P']), 1)
+    hv = np.nonzero(valid)[0]
+    a, b = vp[hv], vp[nxt[hv]]
+    key = np.minimum(a, b) * N + np.maximum(a, b)
+    if len(hv):
+        uniq, first, inv = np.unique(key, return_index=True, return_inverse=True)
+    else:
+        uniq, first, inv = np.zeros(0, np.int64), np.zeros(0, np.int64), np.zeros(0, np.int64)
+    m = len(uniq)
+    c_closed = np.bincount(inv, weights=closed_v[hv], minlength=m)
+    c_open = np.bincount(inv, weights=~closed_v[hv], minlength=m)
+    torn = np.bincount(inv, weights=vtorn[hv], minlength=m) > 0
+    # Torn edges disappear, except boundaries left by a split (each side relaxes to its rest length).
+    active = (~torn | ((c_closed == 1) & (c_open == 0))) & (uniq // N != uniq % N)
+    eligible = ~torn & ((c_closed == 2) | ((c_open >= 1) & (c_closed == 0)))
+    E = np.stack([uniq // N, uniq % N], axis=1)
+    sim['edges'] = E[active]
+    sim['rest'] = sim['vrest'][hv[first]][active]
+    sim['tear_ok'] = eligible[active]
+    sim['edge_mesh'] = ((c_closed == 2) & (c_open == 0))[active]
+    sim['edge_keys'] = uniq[active]
+    sim['h_key'], sim['h_v'] = key, hv
+    # Bend pairs: opposite points of the two faces sharing an untorn edge.
+    ok = closed_v[hv] & (c_closed[inv] == 2) & ~torn[inv]
+    hk, hvv = key[ok], hv[ok]
+    order = np.argsort(hk, kind='stable')
+    hk, hvv = hk[order], hvv[order]
+    pair = np.nonzero(hk[1:] == hk[:-1])[0] if len(hk) > 1 else np.zeros(0, np.int64)
+    B = np.stack([vp[sim['opp'][hvv[pair]]], vp[sim['opp'][hvv[pair + 1]]]], axis=1) if len(pair) \
+        else np.zeros((0, 2), np.int64)
+    # Strands (open curves): points two apart, unless a segment between them is torn.
+    sv = np.nonzero(~closed_v & (sim['local'] <= sim['vsize'] - 3))[0]
+    sv = sv[~vtorn[sv] & ~vtorn[sv + 1]]
+    B = np.concatenate([B, np.stack([vp[sv], vp[sv + 2]], axis=1)]) if len(sv) else B
+    B = B[B[:, 0] != B[:, 1]]
+    sim['bend'] = B
+    P0, orig = sim['P0'], sim['orig']
+    sim['bend_rest'] = np.linalg.norm(P0[orig[B[:, 1]]] - P0[orig[B[:, 0]]], axis=1) if len(B) else np.zeros(0)
+
+
+def _tear_split(sim):
+    """Duplicate points whose surrounding faces are no longer connected through untorn edges."""
+    vp, nxt, valid, closed_v, vtorn = sim['vp'], sim['nxt'], sim['valid'], sim['closed_v'], sim['vtorn']
+    n_v, N = len(vp), len(sim['P'])
+    if n_v == 0:
+        return False
+    th = np.nonzero(vtorn & valid)[0]
+    touched = np.zeros(N, dtype=bool)
+    touched[vp[th]] = True
+    touched[vp[nxt[th]]] = True
+    first_v = np.full(N, n_v, dtype=np.int64)
+    np.minimum.at(first_v, vp, np.arange(n_v))
+    # Vertices that must stay together: at untouched points, on curves, or across untorn shared edges.
+    stay = ~touched[vp] | ~closed_v
+    U = [np.nonzero(stay)[0]]
+    W = [first_v[vp[U[0]]]]
+    hv = np.nonzero(valid & closed_v & ~vtorn)[0]
+    a, b = vp[hv], vp[nxt[hv]]
+    key = np.minimum(a, b) * N + np.maximum(a, b)
+    order = np.argsort(key, kind='stable')
+    k, h = key[order], hv[order]
+    if len(k) > 1:
+        pr = np.nonzero(k[1:] == k[:-1])[0]
+        h1, h2 = h[pr], h[pr + 1]
+        n1, n2 = nxt[h1], nxt[h2]
+        same = vp[h1] == vp[h2]
+        U += [h1, n1]
+        W += [np.where(same, h2, n2), np.where(same, n2, h2)]
+    u, w = np.concatenate(U), np.concatenate(W)
+    lab = np.arange(n_v)
+    for _ in range(n_v + 1):
+        m = np.minimum(lab[u], lab[w])
+        new = lab.copy()
+        np.minimum.at(new, u, m)
+        np.minimum.at(new, w, m)
+        new = new[new]
+        if np.array_equal(new, lab):
+            break
+        lab = new
+    primary = lab[first_v[vp]]
+    extra = lab != primary
+    if not extra.any():
+        return False
+    labels, rank = np.unique(lab[extra], return_inverse=True)
+    new_vp = vp.copy()
+    new_vp[extra] = N + rank
+    src = vp[labels]
+    sim['vp'] = new_vp
+    sim['P'] = np.concatenate([sim['P'], sim['P'][src]])
+    sim['V'] = np.concatenate([sim['V'], sim['V'][src]])
+    sim['pinned'] = np.concatenate([sim['pinned'], sim['pinned'][src]])
+    sim['orig'] = np.concatenate([sim['orig'], sim['orig'][src]])
+    sim['pin_pos'] = sim['P'][sim['pinned']].copy()
+    # A torn balloon loses its pressure.
+    sim['tris'] = None
+    return True
+
+
+def _crack_edges(sim, broken):
+    """For each over-stretched mesh edge (a, b), the crack runs through a across the edges most
+    perpendicular to ab (one on each side), so the faces on b's side separate from the others."""
+    E, X = sim['edges'], sim['P']
+    cand = sim['tear_ok'] & sim['edge_mesh']
+    bi = np.nonzero(broken & sim['edge_mesh'])[0]
+    if len(bi) == 0:
+        return np.zeros(0, np.int64), bi
+    a, b = E[bi, 0].copy(), E[bi, 1].copy()
+    pin = sim['pinned']
+    swap = pin[a] & ~pin[b]
+    a[swap], b[swap] = b[swap], a[swap]
+    # Incidence of candidate edges: (point, edge, other point), sorted by point.
+    ce = np.nonzero(cand)[0]
+    pts = np.concatenate([E[ce, 0], E[ce, 1]])
+    oth = np.concatenate([E[ce, 1], E[ce, 0]])
+    eid = np.concatenate([ce, ce])
+    order = np.argsort(pts, kind='stable')
+    pts, oth, eid = pts[order], oth[order], eid[order]
+    lo = np.searchsorted(pts, a, 'left')
+    cnt = np.searchsorted(pts, a, 'right') - lo
+    k = np.repeat(np.arange(len(a)), cnt)
+    rows = np.repeat(lo, cnt) + (np.arange(int(cnt.sum())) - np.repeat(np.cumsum(cnt) - cnt, cnt))
+    o, e = oth[rows], eid[rows]
+    keep = o != b[k]
+    k, o, e = k[keep], o[keep], e[keep]
+    ab = X[b] - X[a]
+    ab /= np.maximum(np.linalg.norm(ab, axis=1, keepdims=True), 1e-12)
+    d = X[o] - X[a[k]]
+    d /= np.maximum(np.linalg.norm(d, axis=1, keepdims=True), 1e-12)
+    cos = np.abs(np.einsum('ij,ij->i', d, ab[k]))
+    chosen = []
+    first_dir = np.zeros((len(a), 3))
+    has_first = np.zeros(len(a), dtype=bool)
+    for pass_ in range(2):
+        if pass_ == 1:
+            ok = has_first[k] & (np.einsum('ij,ij->i', d, first_dir[k]) < 0)
+        else:
+            ok = np.ones(len(k), dtype=bool)
+        kk, cc, ee, dd = k[ok], cos[ok], e[ok], d[ok]
+        if len(kk) == 0:
+            break
+        srt = np.lexsort((cc, kk))
+        firsts = srt[np.concatenate([[True], kk[srt][1:] != kk[srt][:-1]])]
+        chosen.append(ee[firsts])
+        if pass_ == 0:
+            first_dir[kk[firsts]] = dd[firsts]
+            has_first[kk[firsts]] = True
+    crack = np.unique(np.concatenate(chosen)) if chosen else np.zeros(0, np.int64)
+    # Over-stretched edges with nowhere to crack (no candidate at a) just break themselves.
+    lone = bi[~has_first]
+    return crack, lone
+
+
+def _tear(sim, threshold):
+    """Break stretch constraints longer than rest * threshold. Returns True when the topology changed."""
+    E = sim['edges']
+    if len(E) == 0:
+        return False
+    X = sim['P']
+    ln = np.linalg.norm(X[E[:, 1]] - X[E[:, 0]], axis=1)
+    broken = sim['tear_ok'] & (ln > sim['rest'] * threshold)
+    if not broken.any():
+        return False
+    crack, lone = _crack_edges(sim, broken)
+    # Curve segments break directly; mesh edges open a crack across them.
+    tear_idx = np.concatenate([np.nonzero(broken & ~sim['edge_mesh'])[0], crack, lone])
+    vtorn = sim['vtorn'].copy()
+    vtorn[sim['h_v'][np.isin(sim['h_key'], sim['edge_keys'][tear_idx])]] = True
+    sim['vtorn'] = vtorn
+    _tear_split(sim)
+    _tear_build(sim)
+    return True
+
+
+def _tear_output(geo, data):
+    """Input geometry with the torn topology: points duplicated along splits, torn curves cut."""
+    vp, orig, vtorn = data['vp'], data['orig'], data['vtorn']
+    out = geo.copy()
+    for name, arr in geo.attribs[POINT].items():
+        out.attribs[POINT][name] = arr[orig]
+    for name, g in geo.groups[POINT].items():
+        out.groups[POINT][name] = g[orig]
+    out.P = data['P']
+    out.attribs[POINT]['v'] = data['V'].copy()
+    out.vtx_point = vp.copy()
+    tp = np.zeros(len(orig), dtype=bool)
+    tv = np.nonzero(vtorn)[0]
+    if len(tv):
+        nxt = np.arange(len(vp)) + 1
+        sizes = out.prim_sizes()
+        nz = sizes > 0
+        nxt[(out.prim_start[1:] - 1)[nz]] = out.prim_start[:-1][nz]
+        tp[vp[tv]] = True
+        tp[vp[nxt[tv]]] = True
+        # Open curves: cut at their torn segments.
+        prim = out.vertex_prim()
+        cut = tv[~out.prim_closed[prim[tv]] & (tv + 1 < out.prim_start[1:][prim[tv]])]
+        if len(cut):
+            starts = np.unique(np.concatenate([out.prim_start[:-1][sizes > 0], cut + 1]))
+            src_prim = prim[starts]
+            new_sizes = np.diff(np.concatenate([starts, [len(vp)]]))
+            out.prim_start = np.concatenate([[0], np.cumsum(new_sizes)]).astype(np.int64)
+            out.prim_closed = geo.prim_closed[src_prim]
+            for name, arr in geo.attribs[PRIM].items():
+                out.attribs[PRIM][name] = arr[src_prim]
+            for name, g in geo.groups[PRIM].items():
+                out.groups[PRIM][name] = g[src_prim]
+    out.attribs[POINT]['torn'] = tp.astype(np.int64)
+    out.groups[POINT]['torn'] = tp
+    return out
+
+
 @register_sop
 class VellumSOP(SOP):
     id = 'vellum'
@@ -190,6 +432,10 @@ class VellumSOP(SOP):
         Parm('thickness', "Thickness", 'float', default=0.02, min=0, soft_max=0.5),
         Parm('pressure', "Pressure (Balloon)", 'float', default=0.0, min=0.0, soft_max=3.0,
              description="Closed meshes keep pressure x their rest volume (0 = off, 1 = keep volume, >1 inflate)"),
+        Parm('tearing', "Tearing", 'bool', default=False,
+             description="Stretch constraints break past the threshold and the mesh splits there (points 'torn')"),
+        Parm('tearthreshold', "Tear Threshold", 'float', default=1.5, min=1.0, soft_max=4.0,
+             hide_when={'tearing': False}, description="Stretch ratio (length / rest length) that breaks an edge"),
     )
 
     def cook(self, inputs, p, ctx):
@@ -229,12 +475,16 @@ class VellumSOP(SOP):
                 sim['rest_volume'] = np.abs(vols)
             else:
                 sim['tris'] = None
+            if p.tearing:
+                _tear_init(geo, sim)
             state['frames'] = {start: geo.P.copy()}
             state['last'] = start
         frames = state['frames']
         if frame <= start:
             return geo.copy()
         if frame in frames:
+            if isinstance(frames[frame], dict):
+                return _tear_output(geo, frames[frame])
             out = geo.copy()
             out.P = frames[frame]
             return out
@@ -244,7 +494,9 @@ class VellumSOP(SOP):
             return self.cook(inputs, p, ctx)
         collider = _Collider(col_geo)
         sim = state['sim']
-        if sim['pinned'].any() and geo.num_points == len(sim['P']):
+        if p.tearing and sim['pinned'].any() and 'orig' in sim:
+            sim['pin_pos'] = geo.P[sim['orig'][sim['pinned']]].copy()
+        elif sim['pinned'].any() and geo.num_points == len(sim['P']):
             # Pins follow the (possibly animated) input.
             sim['pin_pos'] = geo.P[sim['pinned']].copy()
         sub = max(int(p.substeps), 1)
@@ -252,8 +504,18 @@ class VellumSOP(SOP):
         for f in range(state['last'] + 1, frame + 1):
             for _ in range(sub):
                 pbd_step(sim, dt, p, collider)
-            frames[f] = sim['P'].copy()
+                if p.tearing:
+                    _tear(sim, max(float(p.tearthreshold), 1.0))
+            if p.tearing:
+                frames[f] = {'P': sim['P'].copy(), 'V': sim['V'].copy(), 'vp': sim['vp'], 'orig': sim['orig'],
+                             'vtorn': sim['vtorn']}
+            else:
+                frames[f] = sim['P'].copy()
             state['last'] = f
+            if len(frames) > 500:
+                del frames[min(fr for fr in frames if fr != start)]
+        if p.tearing:
+            return _tear_output(geo, frames[frame])
         out = geo.copy()
         out.P = frames[frame]
         out.attribs[POINT]['v'] = sim['V'].copy()

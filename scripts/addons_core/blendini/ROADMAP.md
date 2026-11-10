@@ -27,7 +27,7 @@ and needs a real Blender session to confirm.
 - [x] Driver expressions on parameters evaluated through VEX (`#frame * 0.1`, `$F`, `$T`, `$FPS`), keyframes
 - [x] Unconnected inputs read as empty geometry; wrong-typed calls report the function and argument types
 
-### SOPs (161)
+### SOPs (173)
 - [x] Primitives, manipulation, polygon, attribute, group, copy/instancing, terrain, utility,
       Blender-backed (modifiers, bmesh, BVH, Bullet, OpenVDB) — see README for the full list
 - [x] Simulations: Solver (VEX), Vellum-style cloth (PBD), RBD (Bullet), FLIP and PBF liquids + meshing, Pyro smoke and fire,
@@ -227,7 +227,7 @@ Everything interactive has only been tested headless and with mocks. This is the
 - [ ] **VEL-2 (M) Cloth self-collision** (point vs triangle with the spatial hash), **VEL-3 (S)
       wind / drag from normals**, **VEL-4 (M) soft bodies** (tetrahedral or shape-matching),
       **VEL-5 (S) XPBD compliance** so stiffness is independent of iterations and substeps.
-- [ ] **POP-1 (M) Particle follow-ups** (after the POP Solver lands): POP nodes as inputs
+- [ ] **POP-1 (M) Particle follow-ups** (the POP Solver, Vellum Grains, Whitewater and Vellum tearing have landed; the simulation agent was cut off by the usage limit before its final report, so review `sops/particles.py`, `grains.py`, `whitewater.py` and the tearing code in `vellum.py` first): POP nodes as inputs
       (force, wind, drag, attract, curve force, kill, color, replicate), collision with packed
       RBD pieces, instancing onto particles with `orient` from velocity, sprite / trail output.
 - [ ] **CROWD-1 (L, optional) Agents.** Packed agents with clips from Blender armature actions
@@ -302,7 +302,7 @@ first, some may have landed):
       vertex / detail attributes and groups.
 - [ ] **IO-3 (S) VEX library files.** `#include "file.h"` from a search path next to the .blend
       and from a preference directory (text only, still no Python).
-- [ ] **IO-4 (M) Network copy / paste as text.** Serialize selected nodes with parameters,
+- [x] **IO-4 (M) Network copy / paste as text.** (done in `bl/clipboard.py`; VOP networks are referenced by name, not serialized) Serialize selected nodes with parameters,
       spare parameters, snippets and wiring to JSON on the clipboard, and paste it back. Also
       the basis for sharing snippets online and for diff-friendly asset files (`.blendini`).
 - [ ] **IO-5 (M) Digital asset library.** Assets live in a .blend today. Add save / load of a

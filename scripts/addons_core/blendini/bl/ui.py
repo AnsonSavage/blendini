@@ -1773,9 +1773,10 @@ def _all_classes():
 def register():
     for cls in _all_classes():
         bpy.utils.register_class(cls)
-    from . import overlay, node_overlay, handles
+    from . import overlay, node_overlay, handles, clipboard
     overlay.register()
     node_overlay.register()
+    clipboard.register()
     try:
         handles.register()
     except Exception as ex:  # the viewport handle is optional
@@ -1800,9 +1801,10 @@ def register():
 
 
 def unregister():
-    from . import overlay, node_overlay, handles
+    from . import overlay, node_overlay, handles, clipboard
     overlay.unregister()
     node_overlay.unregister()
+    clipboard.unregister()
     try:
         handles.unregister()
     except Exception:
