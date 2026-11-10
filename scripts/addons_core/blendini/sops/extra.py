@@ -880,6 +880,11 @@ def cache_path(pattern, ctx):
     return os.path.abspath(expand_path(pattern, ctx.frame, node, blend_dir))
 
 
+def _is_zip(path):
+    with open(path, 'rb') as fh:
+        return fh.read(2) == b'PK'
+
+
 @register_sop
 class FileCacheSOP(SOP):
     id = 'filecache'
@@ -909,6 +914,10 @@ class FileCacheSOP(SOP):
         path = cache_path(p.file, ctx)
         if os.path.isfile(path):
             try:
+                if path.lower().endswith('.geo') and not _is_zip(path):
+                    # A Houdini ASCII .geo (Save to Disk still writes Blendini's .npz data).
+                    from ..core.houdini_geo import read_geo
+                    return read_geo(path)
                 return load_geometry(path)
             except (OSError, ValueError, KeyError) as ex:
                 raise CookError("Can't read %s: %s" % (path, ex))
@@ -1117,6 +1126,7 @@ class PointReplicateSOP(SOP):
             if name != 'P':
                 out.attribs[POINT][name] = arr[idx]
         out.attribs[POINT]['sourceptnum'] = idx
+        out.instances = list(src.instances)
         return out
 
 

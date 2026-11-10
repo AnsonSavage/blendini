@@ -4,7 +4,7 @@
 
 """
 Random network fuzzer: chains random SOPs with random parameter variants and reports any
-exception other than a CookError, plus cooks slower than 5 s (or stuck for 20 s).
+exception other than a CookError, any cook result failing Geometry.validate(), plus cooks slower than 5 s (or stuck for 20 s).
 
     python fuzz_networks.py SEED COUNT          (pure Python SOPs only)
     blender --background --python fuzz_networks.py -- SEED COUNT   (with the Blender-backed SOPs)
@@ -65,6 +65,13 @@ for it in range(N):
             if out is None:
                 raise RuntimeError("returned None")
             geo = out
+            probs = out.validate()
+            if probs:
+                key = (sid, 'invalid', probs[0][:80])
+                fails[key] += 1
+                if key not in examples:
+                    examples[key] = (dict(p), probs[:3])
+                break
         except Slow:
             print('TIMEOUT', sid, {k: v for k, v in p.items() if k != 'snippet'}, 'in pts', ins[0].num_points, 'prims', ins[0].num_prims, 'vols', len(ins[0].volumes), flush=True)
             break

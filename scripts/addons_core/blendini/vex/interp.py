@@ -214,8 +214,12 @@ class Interpreter:
                 if str(ex).startswith("Line "):
                     raise
                 raise VexError("Line %d: %s" % (self.cur_line, ex)) from None
-            except (TypeError, ValueError, IndexError, KeyError, AttributeError) as ex:
-                raise VexError("Line %d: %s" % (self.cur_line, ex)) from None
+            except RecursionError:
+                raise VexError("Line %d: recursion too deep" % self.cur_line) from None
+            except MemoryError:
+                raise VexError("Line %d: out of memory" % self.cur_line) from None
+            except Exception as ex:  # never leak a raw Python exception to the user
+                raise VexError("Line %d: %s" % (self.cur_line, _plain_error(ex))) from None
 
     def exec_block(self, stmts, mask):
         for s in stmts:
@@ -401,9 +405,10 @@ class Interpreter:
                 if node.name not in v.d:
                     raise VexError("Line %d: %s has no member '%s'" % (node.line, v.t, node.name))
                 return v.d[node.name]
-            idx = _swizzle(node.name, v.t, node.line)
             if v.t in MATRICES:
-                raise VexError("Line %d: member access on matrix" % node.line)
+                r, c = _matrix_comp(node.name, v.t, node.line)
+                return V('float', np.array(v.d[:, r, c], dtype=np.float64))
+            idx = _swizzle(node.name, v.t, node.line)
             d = v.d[:, idx]
             if len(idx) == 1:
                 return V('float', d[:, 0])
@@ -437,6 +442,8 @@ class Interpreter:
                     out[j] = s[ii[j]] if -len(s) <= ii[j] < len(s) else ''
                 return V('string', out)
             raise VexError("Line %d: can't index %s" % (node.line, v.t))
+        if k == 'slice':
+            return self.slice(node, mask)
         if k == 'cast':
             return self.cast(node, mask)
         if k == 'brace':
@@ -451,6 +458,25 @@ class Interpreter:
                 v = self.ev(item, mask)
             return v
         raise VexError("Unknown expression %s" % k)
+
+    def slice(self, node, mask):
+        """a[start:end:step] on arrays and strings, with Python's (and VEX's) semantics."""
+        v = self.ev(node.x, mask)
+        if not (v.t == 'string' or (is_array(v.t) and not self.is_struct(v.t))):
+            raise VexError("Line %d: can't slice %s" % (node.line, v.t))
+        bounds = []
+        for e in (node.start, node.end, node.step):
+            bounds.append(None if e is None else convert(self.ev(e, mask), 'int'))
+        # Uniform operands (the usual case): slice once and keep a single lane.
+        n = 1 if all(b is None or b.d.shape[0] == 1 for b in bounds) and v.d.shape[0] == 1 else self.n
+        data = full(v, n)
+        b = [None if x is None else full(x, n) for x in bounds]
+        out = np.empty(n, dtype=object)
+        for i in range(n):
+            step = None if b[2] is None else (int(b[2][i]) or 1)
+            out[i] = data[i][slice(None if b[0] is None else int(b[0][i]),
+                                   None if b[1] is None else int(b[1][i]), step)]
+        return V(v.t, out)
 
     def brace(self, node, mask, hint):
         items = [self.ev(x, mask) for x in node.items]
@@ -533,6 +559,8 @@ class Interpreter:
             return self.binding_type(target)
         if k == 'member':
             base_t = self.target_type(target.x)
+            if base_t in MATRICES:
+                return 'float'
             if base_t in self.structs:
                 for ft, fname, _d in self.structs[base_t]:
                     if fname == target.name:
@@ -574,6 +602,12 @@ class Interpreter:
                                                  if self.is_struct(old_field.t) else
                                                  V(old_field.t, convert(value, old_field.t).d), old_field)
                 self.store(target.x, V(base.t, fields), mask)
+                return
+            if base.t in MATRICES:
+                r, c = _matrix_comp(target.name, base.t, target.line)
+                d = np.array(full(base, self.n), dtype=np.float64, copy=True)
+                d[:, r, c] = full(convert(value, 'float'), self.n)
+                self.store(target.x, V(base.t, d), mask)
                 return
             idx = _swizzle(target.name, base.t, target.line)
             src = convert(value, 'float' if len(idx) == 1 else VEC_BY_SIZE[len(idx)])
@@ -792,6 +826,24 @@ def _swizzle(name, t, line):
     if any(i >= k for i in idx):
         raise VexError("Line %d: component '.%s' out of range for %s" % (line, name, t))
     return idx
+
+
+def _matrix_comp(name, t, line):
+    """Row / column of a matrix component such as m.xx, m.yz or m.wx (row first, as in VEX)."""
+    k = MATRICES[t]
+    axes = {'x': 0, 'y': 1, 'z': 2, 'w': 3}
+    if len(name) != 2 or name[0] not in axes or name[1] not in axes:
+        raise VexError("Line %d: bad matrix component '.%s' (use .xx, .xy ... like m.yz)" % (line, name))
+    r, c = axes[name[0]], axes[name[1]]
+    if r >= k or c >= k:
+        raise VexError("Line %d: component '.%s' out of range for %s" % (line, name, t))
+    return r, c
+
+
+def _plain_error(ex):
+    """A short message for an unexpected Python exception (first line, no numpy jargon)."""
+    msg = str(ex).split('\n')[0][:120] or type(ex).__name__
+    return "internal error (%s: %s)" % (type(ex).__name__, msg) if isinstance(ex, (AssertionError, NameError)) else msg
 
 
 def _assemble(t, vals, n_lanes):

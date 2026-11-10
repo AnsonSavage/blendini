@@ -35,6 +35,11 @@ STRING_ATTRIBS = {'name', 'path', 'instance', 'material'}
 ATTRIB_DEFAULTS = {'Cd': 1.0, 'Alpha': 1.0, 'pscale': 1.0, 'scale': 1.0, 'orient': (0.0, 0.0, 0.0, 1.0),
                    'width': 1.0, '__inst': -1, '__inst_scale': 1.0}
 
+# Attribute type info (Houdini's type qualifiers): how Transform treats a 3/4 float attribute.
+TYPEINFOS = ('point', 'vector', 'normal', 'color', 'quaternion', 'none')
+TYPEINFO_DEFAULTS = {'P': 'point', 'N': 'normal', 'v': 'vector', 'up': 'vector', 'force': 'vector',
+                     'accel': 'vector', 'orient': 'quaternion', 'Cd': 'color'}
+
 
 def _fill_default(arr, name):
     d = ATTRIB_DEFAULTS.get(name)
@@ -52,7 +57,7 @@ def _default_shape(name):
 
 
 class Geometry:
-    __slots__ = ('attribs', 'prim_start', 'vtx_point', 'prim_closed', 'groups', 'instances', 'volumes')
+    __slots__ = ('attribs', 'prim_start', 'vtx_point', 'prim_closed', 'groups', 'instances', 'volumes', 'typeinfo')
 
     def __init__(self):
         self.attribs = {POINT: {'P': np.zeros((0, 3))}, PRIM: {}, VERTEX: {}, DETAIL: {}}
@@ -67,6 +72,8 @@ class Geometry:
         self.instances = []
         # Volume primitives (core.volume.Volume): dense voxel grids.
         self.volumes = []
+        # Explicit attribute type info {(class, name): typeinfo}; names not listed use TYPEINFO_DEFAULTS.
+        self.typeinfo = {}
 
     # ------------------------------------------------------------------
     # Construction helpers
@@ -88,6 +95,7 @@ class Geometry:
         geo.groups = {c: {k: v.copy() for k, v in d.items()} for c, d in self.groups.items()}
         geo.instances = list(self.instances)
         geo.volumes = list(self.volumes)
+        geo.typeinfo = dict(self.typeinfo)
         return geo
 
     # ------------------------------------------------------------------
@@ -195,6 +203,17 @@ class Geometry:
 
     def remove_attrib(self, cls, name):
         self.attribs[cls].pop(name, None)
+        self.typeinfo.pop((cls, name), None)
+
+    def attrib_typeinfo(self, cls, name):
+        """'point', 'vector', 'normal', 'color', 'quaternion' or 'none' (explicit, else by name)."""
+        return self.typeinfo.get((cls, name), TYPEINFO_DEFAULTS.get(name, 'none'))
+
+    def set_attrib_typeinfo(self, cls, name, typeinfo):
+        typeinfo = (typeinfo or 'none').lower()
+        if typeinfo not in TYPEINFOS:
+            raise ValueError("unknown attribute type info %r (expected one of %s)" % (typeinfo, ', '.join(TYPEINFOS)))
+        self.typeinfo[(cls, name)] = typeinfo
 
     # ------------------------------------------------------------------
     # Modification
@@ -256,17 +275,25 @@ class Geometry:
                 normal_mat = np.linalg.inv(rot).T
             except np.linalg.LinAlgError:
                 normal_mat = rot
+            qrot = None
             for cls in (POINT, VERTEX, PRIM):
-                for name in ('N',):
-                    arr = self.attribs[cls].get(name)
-                    if arr is not None and arr.ndim == 2 and arr.shape[1] == 3:
-                        n = arr @ normal_mat.T
-                        ln = np.linalg.norm(n, axis=1, keepdims=True)
-                        self.attribs[cls][name] = n / np.where(ln == 0, 1, ln)
-                for name in ('v', 'up'):
-                    arr = self.attribs[cls].get(name)
-                    if arr is not None and arr.ndim == 2 and arr.shape[1] == 3:
-                        self.attribs[cls][name] = arr @ rot.T
+                for name, arr in list(self.attribs[cls].items()):
+                    if (cls == POINT and name == 'P') or arr.ndim != 2 or arr.dtype.kind != 'f':
+                        continue
+                    t = self.attrib_typeinfo(cls, name)
+                    if arr.shape[1] == 3:
+                        if t == 'point':
+                            self.attribs[cls][name] = arr @ rot.T + m[:3, 3]
+                        elif t == 'vector':
+                            self.attribs[cls][name] = arr @ rot.T
+                        elif t == 'normal':
+                            n = arr @ normal_mat.T
+                            ln = np.linalg.norm(n, axis=1, keepdims=True)
+                            self.attribs[cls][name] = n / np.where(ln == 0, 1, ln)
+                    elif arr.shape[1] == 4 and t == 'quaternion':
+                        if qrot is None:
+                            qrot = _rotation_quat(rot)
+                        self.attribs[cls][name] = _quat_mul(qrot, arr)
         return self
 
     def delete_prims(self, mask, keep_points=False):
@@ -454,8 +481,76 @@ class Geometry:
             return e
         return np.unique(e, axis=0)
 
+    def validate(self):
+        """Check internal consistency. Returns a list of problem strings (empty = valid)."""
+        probs = []
+        ps = np.asarray(self.prim_start)
+        nv = len(self.vtx_point)
+        P = self.attribs[POINT].get('P')
+        if P is None:
+            return ['missing point attribute P']
+        npt = len(P)
+        if ps.ndim != 1 or len(ps) < 1:
+            probs.append('prim_start must be a non-empty 1D array')
+            return probs
+        if ps[0] != 0:
+            probs.append('prim_start[0] is %d, not 0' % ps[0])
+        if len(ps) > 1 and (np.diff(ps) < 0).any():
+            probs.append('prim_start is not monotone non-decreasing')
+        if ps[-1] != nv:
+            probs.append('prim_start[-1] is %d, not len(vtx_point) %d' % (ps[-1], nv))
+        if nv and (self.vtx_point.min() < 0 or self.vtx_point.max() >= npt):
+            probs.append('vtx_point out of range [0, %d): min %d max %d' % (npt, self.vtx_point.min(), self.vtx_point.max()))
+        if len(self.prim_closed) != self.num_prims:
+            probs.append('prim_closed length %d != num_prims %d' % (len(self.prim_closed), self.num_prims))
+        if not (isinstance(P, np.ndarray) and P.ndim == 2 and P.shape[1] == 3 and P.dtype.kind == 'f'):
+            probs.append('P is not an (n, 3) float array: %s %s' % (getattr(P, 'shape', None), getattr(P, 'dtype', None)))
+        elif npt and not np.isfinite(P).all():
+            probs.append('P has NaN/inf values')
+        for cls in CLASSES:
+            n = self.count(cls)
+            for name, arr in self.attribs[cls].items():
+                if not isinstance(arr, np.ndarray) or arr.ndim == 0:
+                    probs.append('%s attribute %s is not an array' % (cls, name))
+                elif len(arr) != n:
+                    probs.append('%s attribute %s has length %d, expected %d' % (cls, name, len(arr), n))
+        for cls in (POINT, PRIM):
+            n = self.count(cls)
+            for name, g in self.groups[cls].items():
+                if not isinstance(g, np.ndarray) or g.dtype != bool or g.shape != (n,):
+                    probs.append('%s group %s is not a bool array of length %d: %s %s'
+                                 % (cls, name, n, getattr(g, 'shape', None), getattr(g, 'dtype', None)))
+        inst = self.attribs[POINT].get('__inst')
+        if inst is not None and len(inst) and inst.dtype != object and inst.max() >= len(self.instances):
+            probs.append('__inst index %d >= len(instances) %d' % (inst.max(), len(self.instances)))
+        for i, v in enumerate(self.volumes):
+            d = getattr(v, 'data', None)
+            if not isinstance(d, np.ndarray) or d.ndim not in (3, 4):
+                probs.append('volume %d (%s) data is not 3D/4D: %s' % (i, getattr(v, 'name', '?'), getattr(d, 'shape', None)))
+        return probs
+
     def __repr__(self):
         return "<Geometry points=%d prims=%d vertices=%d>" % (self.num_points, self.num_prims, self.num_vertices)
+
+
+def _rotation_quat(m3):
+    """Quaternion (xyzw) of the rotation part of a 3x3 matrix (scale and mirroring removed)."""
+    from .instances import matrix_to_quat
+    u, _s, vt = np.linalg.svd(m3)
+    r = u @ vt
+    if np.linalg.det(r) < 0:
+        r = -r
+    return matrix_to_quat(r[None])[0]
+
+
+def _quat_mul(a, b):
+    """Hamilton product a * b of xyzw quaternions (a broadcasts over b's rows)."""
+    ax, ay, az, aw = np.moveaxis(np.asarray(a, dtype=np.float64), -1, 0)
+    bx, by, bz, bw = np.moveaxis(b, -1, 0)
+    return np.stack([aw * bx + ax * bw + ay * bz - az * by,
+                     aw * by - ax * bz + ay * bw + az * bx,
+                     aw * bz + ax * by - ay * bx + az * bw,
+                     aw * bw - ax * bx - ay * by - az * bz], axis=-1)
 
 
 def _grow(arr, n_new, name=None):
@@ -519,6 +614,8 @@ def merge(geos):
     out.prim_closed = np.concatenate([g.prim_closed for g in geos])
     out.instances = [inst for g in geos for inst in g.instances]
     out.volumes = [v for g in geos for v in g.volumes]
+    for g in reversed(geos):
+        out.typeinfo.update(g.typeinfo)
     for cls in (POINT, PRIM):
         names = set()
         for g in geos:

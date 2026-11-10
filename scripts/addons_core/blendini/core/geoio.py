@@ -42,6 +42,8 @@ def _flatten(geo, prefix, arrays, meta):
         arrays["%sv/%d" % (prefix, i)] = v.data
         meta['volumes'].append({'name': v.name, 'origin': v.origin.tolist(), 'voxelsize': v.voxelsize,
                                 'kind': v.kind})
+    if geo.typeinfo:
+        meta['typeinfo'] = [[c, n, t] for (c, n), t in geo.typeinfo.items()]
     meta['instances'] = []
     for i, inst in enumerate(geo.instances):
         sub = {}
@@ -81,6 +83,7 @@ def _unflatten(data, prefix, meta):
             geo.groups[cls][name] = data["%sg/%s/%s" % (prefix, cls, name)].astype(bool)
     geo.volumes = [Volume(v['name'], data["%sv/%d" % (prefix, i)], v['origin'], v['voxelsize'], v['kind'])
                    for i, v in enumerate(meta.get('volumes', []))]
+    geo.typeinfo = {(c, n): t for c, n, t in meta.get('typeinfo', [])}
     geo.instances = [_unflatten(data, "%si%d/" % (prefix, i), sub) for i, sub in enumerate(meta.get('instances', []))]
     return geo
 

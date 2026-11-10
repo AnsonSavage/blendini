@@ -161,7 +161,7 @@ See [ROADMAP.md](ROADMAP.md) for what is done and what is planned.
 | Group     | Group Create (pattern / bounding box / bounding object / normal / random / `@expression`), Group by Range, Group from Attribute Boundary, Group Transfer, Group Combine, Group Promote, Group Expand, Blast, Delete, Split (two outputs) |
 | Copy      | **Instance** (instance Blender objects onto points by `s@instance` name, rendered as instances), Copy to Points (orient, N/up, pscale, scale, piece variants, **Pack and Instance**), Pack, Unpack, Assemble, Copy and Transform, Extract Transform / Transform Pieces (per-piece rigid transforms: simulate proxies, move high-res pieces), Point Replicate, Scatter, Points from Volume\* |
 | VEX       | Attribute Wrangle (run over points / prims / vertices / detail / numbers), **Point Wrangle**, Primitive Wrangle, Detail Wrangle, **Attribute VOP** (visual VEX: Globals, Bind, Parameter, Ramp, math, logic / two-way switch, vector, noise and color VOPs; dive in with I; shows the generated VEX) |
-| Utility   | **Material** (assigns Blender materials by group: `shop_materialpath` becomes material slots), **File Cache** (Save to Disk per frame / Load from Disk: lossless .npz with attributes, groups, volumes and packed instances; `$F4 $OS $HIP` variables), File (.obj), Extract Centroid, **Subnetwork** + Subnet Input (dive in with I, up with U; promoted parameters readable inside with `ch()`), Merge (multi-input), Switch, Switch-If, Null, Output, Sort (axis, attribute, proximity, vector, random, shift), Time Shift, **Block Begin / Block End (For-Each by pieces, count or feedback)** |
+| Utility   | File also reads Houdini ASCII `.geo` (JSON) files (reader and writer in `core/houdini_geo.py`; tested on round trips and hand-written fixtures, not yet on files saved by Houdini), **Material** (assigns Blender materials by group: `shop_materialpath` becomes material slots), **File Cache** (Save to Disk per frame / Load from Disk: lossless .npz with attributes, groups, volumes and packed instances; `$F4 $OS $HIP` variables), File (.obj), Extract Centroid, **Subnetwork** + Subnet Input (dive in with I, up with U; promoted parameters readable inside with `ch()`), Merge (multi-input), Switch, Switch-If, Null, Output, Sort (axis, attribute, proximity, vector, random, shift), Time Shift, **Block Begin / Block End (For-Each by pieces, count or feedback)** |
 | Blender   | Object Merge (meshes and curves, several objects / wildcards), Solidify\*, **Blender Modifier\*** (any modifier, including Geometry Nodes groups) |
 
 \* These use Blender as the backend. The geometry passes through a real Blender modifier,
@@ -189,6 +189,9 @@ and `nearpoints` (radius search through a vectorized spatial hash) in about 3 s.
 
 Supported language:
 
+- Python-style array and string slicing (`a[1:-1]`, `s[::-1]`), matrix components (`m.xy`), real Worley /
+  Voronoi cellular noise (`wnoise`, `vnoise`, `mwnoise`, `cwnoise`), and array attributes (`i[]@`, `v[]@`,
+  `s[]@`) that keep their types between wrangles. Every error is a VEX error with a line number.
 - Types: `int float vector2 vector vector4 matrix2 matrix3 matrix string dict`, arrays (`int[]` …) and
   `struct`s (member defaults, constructors, passing to and returning from functions, methods
   called with `obj->method()`, arrays of structs with `push` / `pop` / `insert` / `foreach`).

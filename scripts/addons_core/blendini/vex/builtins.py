@@ -186,8 +186,10 @@ def _fit(I, args, mask, hint):
     o0, o1 = _bc(_f(omin), dx), _bc(_f(omax), dx)
     n0, n1 = _bc(_f(convert(nmin, t)), dx), _bc(_f(convert(nmax, t)), dx)
     rng = o1 - o0
-    u = np.clip(np.where(rng == 0, 0.0, (dx - o0) / np.where(rng == 0, 1, rng)), 0, 1)
-    u = np.where(rng < 0, np.clip((dx - o0) / np.where(rng == 0, 1, rng), 0, 1), u)
+    # Like VEX: values outside the old range clamp (either direction), and an empty old
+    # range gives the middle of the new range.
+    u = np.clip((dx - o0) / np.where(rng == 0, 1, rng), 0, 1)
+    u = np.where(rng == 0, 0.5, u)
     return V(t, n0 + (n1 - n0) * u)
 
 
@@ -324,6 +326,13 @@ def _set(I, args, mask, hint):
 @builtin('getcomp')
 def _getcomp(I, args, mask, hint):
     v, i = args[0], convert(args[1], 'int')
+    if v.t in MATRICES and len(args) > 2:
+        # getcomp(m, row, col)
+        j = convert(args[2], 'int')
+        n = _n(I, v, i, j)
+        k = MATRICES[v.t]
+        d = full(v, n)
+        return V('float', d[np.arange(n), np.clip(full(i, n), 0, k - 1), np.clip(full(j, n), 0, k - 1)])
     n = _n(I, v, i)
     d = full(v, n).reshape(n, -1)
     return V('float', d[np.arange(n), np.clip(full(i, n), 0, d.shape[1] - 1)])
@@ -638,13 +647,22 @@ def _vex_format(fmt, values):
             return spec
         conv = spec[-1]
         if t in VECTORS or t in MATRICES or is_array(t):
-            return _fmt_value(val, t if not is_array(t) else 'vector')
+            et = elem_type(t) if is_array(t) else 'float'
+            if conv in 'dixXofeEgG' and spec not in ('%g', '%s') and et != 'string':
+                # Each component gets the format: sprintf("%5.2f", v) -> "{ 1.00, 2.00, 3.00}"
+                comps = np.asarray(val).ravel() if et in SCALARS or et in VECTORS or et in MATRICES else []
+                f = (spec[:-1] + 'd') if conv in 'di' else spec
+                return '{' + ', '.join(f % (int(c) if conv in 'dixXo' else float(c)) for c in comps) + '}'
+            text = _fmt_value(val, t if not is_array(t) else 'vector')
+            if et == 'string' and is_array(t):
+                text = '{' + ', '.join(str(x) for x in val) + '}'
+            return (spec[:-1] + 's') % text if conv == 's' else text
         if conv in 'dixXoc':
             return (spec[:-1] + 'd') % int(val) if conv in 'di' else spec % int(val)
         if conv in 'feEgG':
             return spec % float(val)
         if conv == 's':
-            return _fmt_value(val, t)
+            return spec % _fmt_value(val, t)
         if conv == 'p':
             return _fmt_value(val, t)
         return spec % val
@@ -827,22 +845,51 @@ def _resize(I, args, mask, hint):
 
 @builtin('find')
 def _find(I, args, mask, hint):
-    arr, val = args
-    n = I.n
+    """find(haystack, needle[, start[, end]]) on strings and arrays. Returns the first index
+    (-1 if missing), or every index when an int[] is expected: int all[] = find(a, 1);"""
+    arr, val = args[0], args[1]
+    n = _n(I, *args)
+    want_all = hint == 'int[]'
     d = full(arr, n)
+    st = full(convert(args[2], 'int'), n) if len(args) > 2 else None
+    en = full(convert(args[3], 'int'), n) if len(args) > 3 else None
     if arr.t == 'string':
-        vals = full(val, n)
-        return V('int', np.array([s.find(v) for s, v in zip(d, vals)], dtype=np.int64))
+        vals = full(convert(val, 'string'), n)
+        out = np.empty(n, dtype=object) if want_all else np.full(n, -1, dtype=np.int64)
+        for i in range(n):
+            s0 = int(st[i]) if st is not None else 0
+            s1 = int(en[i]) if en is not None else None
+            if want_all:
+                hits, j = [], d[i].find(vals[i], s0, s1) if s1 is not None else d[i].find(vals[i], s0)
+                while j >= 0:
+                    hits.append(j)
+                    j = d[i].find(vals[i], j + max(len(vals[i]), 1), *(() if s1 is None else (s1,)))
+                out[i] = np.asarray(hits, dtype=np.int64)
+            else:
+                out[i] = d[i].find(vals[i], s0) if s1 is None else d[i].find(vals[i], s0, s1)
+        return V('int[]' if want_all else 'int', out)
+    if not is_array(arr.t):
+        raise VexError("find() needs a string or an array, got %s" % arr.t)
     et = elem_type(arr.t)
     vals = full(convert(val, et), n)
-    out = np.full(n, -1, dtype=np.int64)
+    out = np.empty(n, dtype=object) if want_all else np.full(n, -1, dtype=np.int64)
     for i in range(n):
         a = d[i]
-        for j in range(len(a)):
-            if np.all(np.asarray(a[j]) == vals[i]):
-                out[i] = j
-                break
-    return V('int', out)
+        s0 = int(st[i]) if st is not None else 0
+        s1 = min(int(en[i]), len(a)) if en is not None else len(a)
+        if et == 'string':
+            hits = [j for j in range(max(s0, 0), s1) if a[j] == vals[i]]
+        else:
+            seg = np.asarray(a)[max(s0, 0):s1]
+            eq = seg == vals[i]
+            if eq.ndim > 1:
+                eq = np.all(eq.reshape(len(seg), -1), axis=1)
+            hits = (np.nonzero(eq)[0] + max(s0, 0)).tolist()
+        if want_all:
+            out[i] = np.asarray(hits, dtype=np.int64)
+        else:
+            out[i] = hits[0] if hits else -1
+    return V('int[]' if want_all else 'int', out)
 
 
 @builtin('sort')
@@ -1967,3 +2014,4 @@ def _colormap(I, args, mask, hint):
 
 
 from . import builtins_more  # noqa: E402,F401  (registers more functions)
+from . import builtins_extra  # noqa: E402,F401  (registers more functions)

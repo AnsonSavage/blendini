@@ -132,9 +132,7 @@ def mwhere(mask, new, old):
 def type_of_array(arr):
     """VEX type matching a geometry attribute array."""
     if arr.dtype == object:
-        if len(arr) and not isinstance(arr[0], str):
-            return 'float[]'
-        return 'string'
+        return _object_attrib_type(arr)
     shape = arr.shape[1:]
     if shape == ():
         return 'int' if arr.dtype.kind in 'iub' else 'float'
@@ -151,6 +149,48 @@ def type_of_array(arr):
     if shape == (2, 2):
         return 'matrix2'
     return 'float'
+
+
+def _array_elem_type(x):
+    """VEX array type of one array attribute value, or None if it can't tell (empty list)."""
+    if isinstance(x, (list, tuple)):
+        if not len(x):
+            return None
+        if isinstance(x[0], str):
+            return 'string[]'
+        x = np.asarray(x)
+    a = np.asarray(x)
+    base = 'int' if a.dtype.kind in 'iub' else 'float'
+    if a.ndim == 2 and a.shape[1] in (2, 3, 4):
+        base = VEC_BY_SIZE[a.shape[1]]
+    return base + '[]'
+
+
+def _object_attrib_type(arr):
+    """Type of an object dtype attribute: strings, dicts or arrays (int[], vector[], string[] ...)."""
+    if not len(arr):
+        return 'string'
+    first = arr[0]
+    if isinstance(first, str):
+        return 'string'
+    if isinstance(first, dict):
+        return 'dict'
+    # Arrays: the first non-empty element decides (empty ones carry no element type).
+    for x in arr[:4096]:
+        if isinstance(x, (list, tuple)) and not len(x):
+            continue
+        if isinstance(x, np.ndarray) and x.size == 0:
+            continue
+        t = _array_elem_type(x)
+        if t is not None:
+            return t
+    if isinstance(first, (list, tuple)):
+        return 'string[]'
+    if isinstance(first, np.ndarray):
+        if first.ndim == 2 and first.shape[1] in VEC_BY_SIZE and first.shape[1] > 1:
+            return VEC_BY_SIZE[first.shape[1]] + '[]'
+        return ('int' if first.dtype.kind in 'iub' else 'float') + '[]'
+    return 'float[]'
 
 
 def convert(v, t):

@@ -383,7 +383,7 @@ def run_wrangle(code, inputs, run_over=POINT, group=None, channels=None, ramps=N
         ctx.numbers = True
         interp = Interpreter(prog, ctx, len(elems))
         interp.run()
-        return ctx.finalize(interp), ctx.messages
+        return _finalize(ctx, interp), ctx.messages
     if run_over == DETAIL:
         elems = np.zeros(1, dtype=np.int64)
     else:
@@ -398,7 +398,19 @@ def run_wrangle(code, inputs, run_over=POINT, group=None, channels=None, ramps=N
         return geo.copy(), ctx.messages
     interp = Interpreter(prog, ctx, n)
     interp.run()
-    return ctx.finalize(interp), ctx.messages
+    return _finalize(ctx, interp), ctx.messages
+
+
+def _finalize(ctx, interp):
+    """Apply the deferred writes; errors come back as VexError like the rest of the snippet."""
+    try:
+        with np.errstate(all='ignore'):
+            return ctx.finalize(interp)
+    except VexError:
+        raise
+    except Exception as ex:
+        raise VexError("Line %d: while writing the results to the geometry: %s"
+                       % (interp.cur_line or 1, str(ex).split('\n')[0][:120] or type(ex).__name__)) from None
 
 
 def find_channels(code):

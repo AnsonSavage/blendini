@@ -851,7 +851,7 @@ def _nrandom(I, args, mask, hint):
     return V(VEC_BY_SIZE[dims], d)
 
 
-@builtin('vnoise', 'flownoise', 'wnoise', 'curlxnoise')
+@builtin('flownoise', 'curlxnoise')
 def _noise_aliases(I, args, mask, hint):
     dims = _result_dims(hint)
     return V(VEC_BY_SIZE[dims], _noise.noise(_noise_pos(I, args), dims))

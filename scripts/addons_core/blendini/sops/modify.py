@@ -1159,6 +1159,7 @@ class CopyToPointsSOP(SOP):
             T = T - np.einsum('kij,kj->ki', M, pa['pivot'][tidx])
         import fnmatch
         copy_names = [n for n in pa if n not in ('P', 'N', 'orient', 'up', 'pscale', 'scale', 'trans', 'pivot', 'rot')
+                      and not n.startswith('__inst')
                       and any(fnmatch.fnmatchcase(n, pat) for pat in p.copyattribs.split())]
         if p.pack:
             from ..core.instances import pack
@@ -1182,6 +1183,10 @@ class CopyToPointsSOP(SOP):
             out.attribs[POINT][name] = data
         for n in copy_names:
             out.attribs[POINT][n] = np.repeat(pa[n][tidx], S, axis=0)
+        if src.instances and '__inst_rot' in src.attribs[POINT]:
+            from ..core.instances import instance_matrices, set_instance_matrices
+            out.instances = list(src.instances)
+            set_instance_matrices(out, np.einsum('nij,njk->nik', np.repeat(M, S, axis=0), instance_matrices(out)))
         sizes = src.prim_sizes()
         offsets = (np.arange(K) * S)[:, None]
         flat = (src.vtx_point[None, :] + offsets).ravel()
@@ -1897,9 +1902,10 @@ class FileSOP(SOP):
     category = 'Utility'
     inputs = 0
     icon = 'FILE_FOLDER'
-    description = "Read geometry from a Wavefront .obj file"
+    description = "Read geometry from a Wavefront .obj or Houdini ASCII .geo file"
     parms = (
-        Parm('file', "Geometry File", 'string', default='', description="Path to an .obj file ('//' is relative to the .blend)"),
+        Parm('file', "Geometry File", 'string', default='',
+             description="Path to an .obj or .geo file ('//' is relative to the .blend)"),
     )
 
     def cook(self, inputs, p, ctx):
@@ -1912,9 +1918,14 @@ class FileSOP(SOP):
         except ImportError:
             pass
         try:
+            if path.lower().endswith('.geo'):
+                from ..core.houdini_geo import read_geo
+                return read_geo(path)
             return read_obj(path)
         except OSError as ex:
             raise CookError("Can't read %s: %s" % (path, ex.strerror or ex))
+        except ValueError as ex:
+            raise CookError(str(ex))
 
 
 def read_obj(path):
@@ -2467,6 +2478,7 @@ class ConvertLineSOP(SOP):
         out = Geometry()
         out.attribs[POINT] = {k: v.copy() for k, v in geo.attribs[POINT].items()}
         out.groups[POINT] = {k: v.copy() for k, v in geo.groups[POINT].items()}
+        out.instances = list(geo.instances)
         E = geo.edges()
         if len(E):
             out.add_prims_flat(np.full(len(E), 2), E.ravel(), False)

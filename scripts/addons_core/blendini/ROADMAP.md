@@ -141,7 +141,7 @@ Everything interactive has only been tested headless and with mocks. This is the
       network and are evaluated only at display / conversion. Unblocks native NURBS and Bézier.
       *Files:* `core/geometry.py`, `bl/mesh_io.py`, `bl/curves_io.py`, Convert SOP.
       *Accept:* a NURBS curve survives Transform + Merge + File Cache and renders smooth.
-- [ ] **GEO-2 (M) Attribute type info.** Store type qualifiers (point, vector, normal, color,
+- [x] **GEO-2 (M) Attribute type info.** (done: `geo.typeinfo`, used by Transform; not yet persisted by VEX `setattribtypeinfo`) Store type qualifiers (point, vector, normal, color,
       quaternion, matrix) per attribute so Transform handles every vector attribute correctly,
       not just the hard-coded `N`, `v`, `up`. Expose `setattribtypeinfo` / `attribtypeinfo`.
       *Accept:* a custom `v@dir` typed "vector" rotates with Transform; typed "point" translates.
@@ -296,7 +296,7 @@ first, some may have landed):
       temporary object (pattern: `sops/blender_ops.py` `ObjectMergeSOP._read`). File SOP reads
       .abc / .usd / .usdc / .ply / .stl / .fbx / .gltf with attributes where Blender exposes
       them; a ROP-style Export node writes sequences with `$F4`.
-- [ ] **IO-2 (M) bgeo.sc / .geo (JSON) reader.** Houdini's ASCII `.geo` is documented JSON. A
+- [ ] **IO-2 (M) bgeo.sc / .geo (JSON) reader.** (ASCII reader / writer done from the format spec; still needs a real Houdini file) Houdini's ASCII `.geo` is documented JSON. A
       reader makes real Houdini caches and test assets loadable. Binary `.bgeo.sc` needs blosc;
       do ASCII first. *Accept:* loads a `.geo` saved from Houdini Apprentice with point / prim /
       vertex / detail attributes and groups.
@@ -357,7 +357,7 @@ first, some may have landed):
       flow, so new contributors do not need to read the whole tree.
 - [ ] **QA-6 (S) Extension release.** Version bump policy, changelog, license check of the
       bundled examples, publish to extensions.blender.org (needs the P0 pass first).
-- [ ] **QA-7 (S) Property-based tests** for the geometry core (random delete / merge / sort /
+- [x] **QA-7 (S) Property-based tests** for the geometry core (random delete / merge / sort /
       fuse sequences keep topology arrays consistent: `prim_start` monotone, vertex indices in
       range, attribute lengths equal counts, groups sized right). A `Geometry.validate()`
       method used by the fuzzer after every cook.

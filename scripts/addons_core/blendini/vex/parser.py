@@ -463,6 +463,8 @@ class Parser:
                 else:
                     idx_name, var_name = None, names[0]
                 return Node('foreach', line, vtype=vtype, var=var_name, index=idx_name, array=arr, body=body)
+            if kw == 'switch' and self.is_op('(', self.peek()):
+                raise VexSyntaxError("VEX has no switch statement: use if / else if", t.line, t.col)
             if kw == 'break':
                 self.next()
                 self.accept(';')
@@ -587,7 +589,17 @@ class Parser:
             t = self.tok
             if self.is_op('['):
                 self.next()
-                idx = self.parse_expr()
+                # a[i], or a slice: a[start:end], a[:end], a[start:], a[::step]
+                idx = None if self.is_op(':') else self.parse_expr()
+                if self.is_op(':'):
+                    self.next()
+                    end = None if self.is_op(':') or self.is_op(']') else self.parse_expr()
+                    step = None
+                    if self.accept(':') and not self.is_op(']'):
+                        step = self.parse_expr()
+                    self.expect(']')
+                    e = Node('slice', t.line, x=e, start=idx, end=end, step=step)
+                    continue
                 self.expect(']')
                 e = Node('index', t.line, x=e, i=idx)
             elif self.is_op('.'):
@@ -717,11 +729,12 @@ def expand_function_macros(src):
                 depth += {'(': 1, ')': -1}.get(src[i], 0)
                 i += 1
             if depth:
-                raise VexSyntaxError("Unterminated call to macro %s" % m.group(1))
+                raise VexSyntaxError("Unterminated call to macro %s" % m.group(1), src.count('\n', 0, m.start()) + 1)
             params, body = macros[m.group(1)]
             args = _split_args(src[start:i - 1]) if src[start:i - 1].strip() else []
             if len(args) != len(params):
-                raise VexSyntaxError("Macro %s expects %d arguments" % (m.group(1), len(params)))
+                raise VexSyntaxError("Macro %s expects %d arguments" % (m.group(1), len(params)),
+                                     src.count('\n', 0, m.start()) + 1)
             for pname, arg in zip(params, args):
                 body = re.sub(r'\b%s\b' % re.escape(pname), '(%s)' % arg, body)
             out.append(src[pos:m.start()])
@@ -734,4 +747,15 @@ def expand_function_macros(src):
 
 
 def parse(src):
-    return Parser(expand_function_macros(src)).parse_program()
+    p = None
+    try:
+        p = Parser(expand_function_macros(src))
+        return p.parse_program()
+    except VexSyntaxError as ex:
+        if not ex.line and p is not None:
+            raise VexSyntaxError(str(ex), p.tok.line, p.tok.col) from None
+        raise
+    except RecursionError:
+        raise VexSyntaxError("Expression nested too deeply", p.tok.line if p else 1) from None
+    except Exception as ex:  # never leak a raw Python exception out of the parser
+        raise VexSyntaxError("Can't parse the code (%s)" % ex, p.tok.line if p else 1) from None

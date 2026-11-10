@@ -52,6 +52,10 @@ class AttribCreateSOP(SOP):
         cls = p['class']
         name = p.name.strip() or 'attrib'
         mask = _class_mask(geo, cls, p.group)
+        want = {'float': ('f', ()), 'int': ('i', ()), 'vector': ('f', (3,)), 'string': ('O', ())}.get(p.type, ('O', ()))
+        old = geo.attribs[cls].get(name)
+        if old is not None and name != 'P' and (old.dtype.kind != want[0] or old.shape[1:] != want[1]):
+            geo.remove_attrib(cls, name)   # existing attribute of another type: recreate it
         if p.type == 'float':
             arr = geo.add_attrib(cls, name, shape=(), dtype=np.float64)
             val = p.value[0]
